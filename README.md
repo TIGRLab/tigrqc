@@ -4,10 +4,9 @@ It provides a dashboard that centralizes quality control of raw MRI data and hos
 
 To install:
 ```bash
-# if using pip. Use -e for an editable install
+# if using pip. Use -e for an editable install.
 pip install .
 
-# Or if using uv. Use --editable for an editable install
-uv install .
-
+# Or if using uv. This is editable by default.
+uv sync
 ```
