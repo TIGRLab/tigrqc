@@ -45,6 +45,7 @@ docs/api/
 
 # VS Code
 .vscode
+*.code-workspace
 
 # uv
 .python-version
