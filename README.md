@@ -1,6 +1,6 @@
-This is the 'Translational Imaging-Genetics Research' (TIGR) Quality Control dashboard for MRI data.
+TIGRQC is the 'Translational Imaging-Genetics Research' (TIGR) Quality Control (QC) dashboard for MRI data.
 
-It provides a dashboard that centralizes quality control of raw MRI data and hosts quality control metrics for a variety of processing pipelines with minimal configuration required.
+It provides an easy to use dashboard that centralizes quality control of raw MRI data and hosts quality control metrics for a variety of processing pipelines with minimal configuration required.
 
 To install:
 ```bash

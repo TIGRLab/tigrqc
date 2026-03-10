@@ -1,0 +1,24 @@
+site_name: TIGRQC
+site_url: https://tigrlab.github.io/tigrqc/
+theme:
+  name: material
+  features:
+    - navigation.expand
+    - navigation.indexes
+    - navigation.path
+    - navigation.tabs
+    - navigation.top
+    - search.highlight
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_signature: true
+            show_signature_annotations: true
+            separate_signature: true
+  - gen-files:
+      scripts:
+        - docs/mkdocs_gen_api.py
