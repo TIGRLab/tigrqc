@@ -35,6 +35,3 @@ docs = [
 extras = [
     "ipython>=9.11.0",
 ]
-
-[tool.setuptools.packages.find]
-include = ["tigrqc", "config"]

@@ -16,7 +16,7 @@ def create_app(config: Mapping[str, Any] | None = None) -> Flask:
     app = Flask(__name__)
 
     if config is None:
-        app.config.from_object('config')
+        app.config.from_object('tigrqc.config')
     else:
         app.config.from_mapping(config)
 
