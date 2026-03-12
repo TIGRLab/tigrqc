@@ -21,4 +21,4 @@ plugins:
             separate_signature: true
   - gen-files:
       scripts:
-        - docs/mkdocs_gen_api.py
+        - docs/mkdocs_gen.py
