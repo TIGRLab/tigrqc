@@ -3,6 +3,8 @@ site_url: https://tigrlab.github.io/tigrqc/
 theme:
   name: material
   features:
+    - content.code.annotate
+    - content.code.copy
     - navigation.expand
     - navigation.indexes
     - navigation.path
@@ -29,3 +31,15 @@ plugins:
         - docs/mkdocs_gen.py
   - literate-nav:
       nav_file: navigation.md
+
+markdown_extensions:
+  - pymdownx.highlight:
+      auto_title: true
+      use_pygments: true
+      linenums: true
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
