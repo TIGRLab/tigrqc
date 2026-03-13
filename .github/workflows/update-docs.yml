@@ -1,0 +1,60 @@
+# Updates to gh-pages only happen with a direct push to main or a PR merge.
+#
+# When a pull request is opened/updated docs will build (but not publish) to
+# verify that the PR does not break anything.
+name: Build and publish docs
+
+on:
+  push:
+    branches: [main]
+
+  pull_request:
+    branches: ['*']
+
+jobs:
+  build-docs:
+    name: Build docs with mkdocs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          version: "0.10.8"
+
+      - name: Install tigrqc
+        run: uv sync --locked --group docs
+
+      - name: Build docs
+        run: uv run mkdocs build --strict
+
+      - name: Save build as an artifact
+        id: upload_docs
+        uses: actions/upload-artifact@v6
+        with:
+          name: mkdocs-site
+          path: site/
+
+  publish-docs:
+    name: Update gh-pages branch
+    needs: build-docs
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository (needed to push later)
+        uses: actions/checkout@v6
+
+      - name: Grab build artifact
+        uses: actions/download-artifact@v6
+        with:
+          name: mkdocs-site
+
+      - name: Update gh-pages branch
+        uses: peaceiris/actions-gh-pages@v6
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
+          publish_branch: gh-pages
