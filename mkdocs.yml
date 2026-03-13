@@ -1,5 +1,5 @@
 site_name: TIGRQC
-site_url: https://tigrlab.github.io/tigrqc/
+site_url: http://imaging-genetics.camh.ca/tigrqc/
 theme:
   name: material
   features:
