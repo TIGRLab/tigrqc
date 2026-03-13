@@ -6,7 +6,7 @@ provided for sqlite if persistence is needed.
 
 If a user, password, server, port, or database name are provided it's assumed
 the database will be postgresql. To enable postgresql without changing any
-defaults set 'TIGRQC_DB_POSTGRES=True'
+defaults set `TIGRQC_DB_POSTGRES=True`
 
 Users can choose another database at their own risk, or toggle additional
 connection values, by specifying the entire database connection string.
