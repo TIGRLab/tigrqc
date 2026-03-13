@@ -10,6 +10,10 @@ theme:
     - navigation.top
     - search.highlight
 
+validation:
+  links:
+    unrecognized_links: ignore
+
 plugins:
   - search
   - mkdocstrings:
@@ -22,3 +26,5 @@ plugins:
   - gen-files:
       scripts:
         - docs/mkdocs_gen.py
+  - literate-nav:
+      nav_file: navigation.md
