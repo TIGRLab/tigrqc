@@ -35,3 +35,6 @@ docs = [
 extras = [
     "ipython>=9.11.0",
 ]
+tests = [
+    "pytest>=9.0.2",
+]
