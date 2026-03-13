@@ -73,7 +73,7 @@ uv sync --all-groups
 # Add a new dependency
 uv add <packagename>
 # Add a new dependency to an optional group
-uv add --group GROUPNAME
+uv add --group GROUPNAME <packagename>
 
 
 # Update a dependency's version
