@@ -9,7 +9,7 @@ on:
     branches: [main]
 
   pull_request:
-    branches: ['*']
+    branches: [main]
 
 jobs:
   build-docs:
@@ -31,30 +31,21 @@ jobs:
       - name: Build docs
         run: uv run mkdocs build --strict
 
-      - name: Save build as an artifact
-        id: upload_docs
-        uses: actions/upload-artifact@v6
+      - name: Upload static files as artifact
+        id: deployment
+        uses: actions/upload-pages-artifact@v4
         with:
-          name: mkdocs-site
           path: site/
 
   publish-docs:
     name: Update gh-pages branch
     needs: build-docs
     if: github.event_name == 'push'
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository (needed to push later)
-        uses: actions/checkout@v6
-
-      - name: Grab build artifact
-        uses: actions/download-artifact@v6
-        with:
-          name: mkdocs-site
-
-      - name: Update gh-pages branch
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./site
-          publish_branch: gh-pages
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
