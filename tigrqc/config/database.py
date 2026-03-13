@@ -13,47 +13,67 @@ connection values, by specifying the entire database connection string.
 """
 import os
 
+from sqlalchemy.engine import URL, make_url
+
+from tigrqc.exceptions import ConfigException
+
 from .utils import read_boolean
 
-# Allow advanced users to set the database URI directly.
-# Note that this allows users to choose untested databases at their own risk.
-db_uri = os.environ.get('TIGRQC_DB_URI', '')
 
-# Path for the sqlite database, if used. Defaults to in-memory database.
-sqlite_path = os.environ.get('TIGRQC_DB_PATH', ':memory:')
+def make_database_uri() -> URL:
+    """Create the URI for the database based on user configuration.
+    """
+    # Allow advanced users to set the database URI directly.
+    # Note that this allows untested databases at the user's own risk.
+    db_uri = os.environ.get('TIGRQC_DB_URI', '')
 
-# User to connect to database as. If None, will connect as current user.
-user = os.environ.get('TIGRQC_DB_USER')
+    if db_uri:
+        return make_url(db_uri)
 
-# Password to use to connect. If unset, passwordless auth must be enabled
-password = os.environ.get('TIGRQC_DB_PASS', '')
+    # User to connect to database as. If None, will connect as current user.
+    user = os.environ.get('TIGRQC_DB_USER')
 
-# Server to connect to. If unset, will try to connect to localhost
-server = os.environ.get('TIGRQC_DB_SRVR', '')
+    # Password to use to connect. If unset, passwordless auth must be enabled
+    password = os.environ.get('TIGRQC_DB_PASS')
 
-# Name of the database to connect to. If unset, will try to use 'tigrqc'
-db_name = os.environ.get('TIGRQC_DB_NAME', '')
+    # Server to connect to. If unset, will try to connect to localhost
+    server = os.environ.get('TIGRQC_DB_SRVR')
 
-# Port to use to connect. If unset, will use the default postgres port (5432)
-port = os.environ.get('TIGRQC_DB_PORT', '')
+    # Name of the database to connect to. If unset, will try to use 'tigrqc'
+    db_name = os.environ.get('TIGRQC_DB_NAME')
 
-# Enable postgres without changing defaults. Default False.
-use_postgres = read_boolean('TIGRQC_DB_POSTGRES')
+    # Port to use to connect. If unset, will use the default port
+    str_port = os.environ.get('TIGRQC_DB_PORT')
 
-if db_uri:
-    SQLALCHEMY_DATABASE_URI = db_uri
-elif use_postgres or any([user, password, server, db_name, port]):
-    if not server:
-        server = 'localhost'
+    if str_port:
+        try:
+            port = int(str_port)
+        except ValueError as e:
+            raise ConfigException(
+                f'int port number expected, received {str_port}'
+            ) from e
+    else:
+        port = None
 
-    if not db_name:
-        db_name = 'tigrqc'
+    # Enable postgres without changing defaults. Default False.
+    use_postgres = read_boolean('TIGRQC_DB_POSTGRES')
 
-    if port:
-        port = ':' + port
+    if use_postgres or any([user, password, server, db_name, port]):
+        if not db_name:
+            db_name = 'tigrqc'
 
-    SQLALCHEMY_DATABASE_URI = (
-        f'postgresql://{user}:{password}@{server}{port}/{db_name}'
-    )
-else:
-    SQLALCHEMY_DATABASE_URI = f'sqlite:///{sqlite_path}'
+        return URL.create(
+            'postgresql',
+            username=user,
+            password=password,
+            host=server,
+            database=db_name,
+            port=port
+        )
+
+    # Path for the sqlite database, if used. Defaults to in-memory database.
+    sqlite_path = os.environ.get('TIGRQC_DB_PATH', ':memory:')
+    return make_url(f'sqlite:///{sqlite_path}')
+
+
+SQLALCHEMY_DATABASE_URI = make_database_uri()
