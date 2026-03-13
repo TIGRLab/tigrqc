@@ -3,34 +3,34 @@ Thanks for considering contributing to tigrqc! We welcome contributions of any k
 ### Style
 As much as possible please try to adhere to PEP8 conventions and try to include type hints. We use these tools to enforce these things:
 
-    - flake8
-    - isort
-    - mypy
-    - pylint
+- flake8
+- isort
+- mypy
+- pylint
 
 ### Commit Conventions
 We try to tag our commits with semantic tags (some of our tooling uses these tags).
 
 Please prefix each of your commits with one of these tags:
 
-    - [BUILD]: For build-related changes
-    - [CHORE]: For small changes that don't really fit anywhere else
-    - [CI]: For continuous integration related changes
-    - [DEP]: For dependency changes
-    - [DOC]: For documentation additions or changes
-    - [ENH]: For commits that add new functionality or features or performance improvements
-    - [FIX]: For bug fixes
-    - [REF]: For refactoring
-    - [TEST]: For changes that add or update tests
+- [BUILD]: For build-related changes
+- [CHORE]: For small changes that don't really fit anywhere else
+- [CI]: For continuous integration related changes
+- [DEP]: For dependency changes
+- [DOC]: For documentation additions or changes
+- [ENH]: For commits that add new functionality or features or performance improvements
+- [FIX]: For bug fixes
+- [REF]: For refactoring
+- [TEST]: For changes that add or update tests
 
 ### Reporting Bugs
 Please try to include these details when making a bug report:
 
-    - Python version
-    - OS type and version
-    - Which version or specific commit of tigrqc you're running
-    - A description of the bug (what you expected to happen and what actually happened)
-    - The specific set of steps to reproduce the bug you've found
+- Python version
+- OS type and version
+- Which version or specific commit of tigrqc you're running
+- A description of the bug (what you expected to happen and what actually happened)
+- The specific set of steps to reproduce the bug you've found
 
 ### Documentation Changes
 We use [mkdocs](https://www.mkdocs.org/) to generate our documentation. This means that our documentation configuration is stored in 'mkdocs.yml'. We use [mkdocs-material](https://squidfunk.github.io/mkdocs-material/) as our theme.
