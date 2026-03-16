@@ -16,6 +16,7 @@ keywords = ["neuroimaging", "mri", "quality control", "QC"]
 
 dependencies = [
     "flask>=3.1.3",
+    "flask-login>=0.6.3",
     "flask-sqlalchemy>=3.1.1",
 ]
 
