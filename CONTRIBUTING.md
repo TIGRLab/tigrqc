@@ -79,3 +79,20 @@ uv add --group GROUPNAME <packagename>
 # Update a dependency's version
 uv update [<packagename>]
 ```
+
+### Running Tests
+We use pytest for our tests. To run tests locally, first install the extra
+dependencies:
+
+```bash
+# If using uv
+uv sync --group tests
+
+# If using pip
+pip install .[tests]
+```
+
+Then from the root folder of the project:
+```bash
+pytest tests
+```
