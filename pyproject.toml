@@ -40,3 +40,6 @@ extras = [
 tests = [
     "pytest>=9.0.2",
 ]
+
+[tool.mypy]
+ignore_missing_imports = true
