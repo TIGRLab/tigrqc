@@ -17,6 +17,24 @@ else:
 
 class User(UserMixin, TableMixin, Model):
     """An application user.
+
+    Attributes:
+        id: Primary key.
+        first_name: User's first name.
+        last_name: User's last name.
+        email: The user's email. Optional, defaults to ``None``.
+        position: The user's job position at their institution. Optional,
+            defaults to ``None``.
+        institution: The insitution the user works at. Optional, defaults
+            to ``None``.
+        phone_num: The user's phone number. Optional, defaults to ``None``.
+        phone_ext: The user's phone extension if needed. Optional, defaults
+            to ``None``.
+        is_admin: Whether the user should have admin permissions. Optional,
+            defaults to ``False``.
+        is_active: Whether the account is currently active. Optional,
+            defaults to ``False``.
+        auth_methods: Authentication methods the user can use to log in.
     """
     __tablename__ = 'users'
 
@@ -41,6 +59,22 @@ class User(UserMixin, TableMixin, Model):
 
 class UserAuth(TableMixin, Model):
     """Authentication methods available for a user.
+
+    Attributes:
+        id: Primary key.
+        user_id: The ID of the user that may log in using these
+            credentials. Foreign Key on User.id.
+        provider: The authentication provider (e.g. 'github').
+        auth_id: The identifier used by the authentication provider.
+        user: The user that this configuration belongs to.
+
+    Notes:
+        Unique constraints:
+
+        - (user_id, provider) must be unique. Each user can only configure
+            a specific auth method once.
+        - (provider, auth_id) must be unique. The same authentication
+            credentials cannot log in more than one user.
     """
     __tablename__ = 'user_auth'
 
