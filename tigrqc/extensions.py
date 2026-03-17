@@ -6,13 +6,21 @@ from typing import TYPE_CHECKING
 
 from flask_login import LoginManager
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.orm import DeclarativeBase
 
 if TYPE_CHECKING:
     from flask import Flask
 
     from tigrqc.models import User
 
-db = SQLAlchemy()
+
+# pylint: disable=too-few-public-methods
+class Base(DeclarativeBase):
+    """DeclarativeBase for flask-sqlalchemy type hints.
+    """
+
+
+db = SQLAlchemy(model_class=Base)
 lm = LoginManager()
 
 
