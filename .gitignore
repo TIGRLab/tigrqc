@@ -60,3 +60,4 @@ docs/api/
 process.yml
 *.log
 *.tmp
+*.sqlite
