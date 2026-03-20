@@ -1,6 +1,7 @@
 """Non-native types for use in database models.
 """
 from pathlib import Path
+from urllib.parse import urlparse
 
 from sqlalchemy import String, TypeDecorator
 from sqlalchemy.engine.interfaces import Dialect
@@ -59,3 +60,42 @@ class PathType(TypeDecorator[Path]):
         """
         result = self.process_bind_param(value, dialect)
         return result if result is not None else ''
+
+
+class UrlType(TypeDecorator[str]):  # pylint: disable=W0223
+    """A column type that ensures URL values include the scheme.
+
+    If the column value is a URL that's missing the scheme, this column
+    type will ensure its set to 'https'.
+
+    Example:
+        .. code-block:: Python
+
+            class SomeTable(Model):
+                my_url: Mapped[String | None] = mapped_column(UrlType)
+    """
+    impl = String
+    cache_ok = True
+
+    @property
+    def python_type(self):
+        """The type the column maps to.
+        """
+        return String
+
+    def process_bind_param(
+            self, value: str | None, dialect: Dialect
+    ) -> str | None:
+        """Ensures scheme is 'https' if no URL scheme is given.
+
+        Args:
+            value: The value to be stored in the database.
+            dialect: The sqlalchemy dialect in use. Unused in this case.
+        """
+        if not value:
+            return value
+
+        if not urlparse(value).scheme:
+            value = 'https://' + value
+
+        return value
