@@ -42,3 +42,6 @@ class Project(TableMixin, Model):
     is_active: Mapped[Boolean] = mapped_column(
         Boolean, default=True, nullable=False
     )
+
+    def __repr__(self) -> str:
+        return f'<Project {self.id}>'
