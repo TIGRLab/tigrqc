@@ -33,6 +33,8 @@ plugins:
       nav_file: navigation.md
 
 markdown_extensions:
+  - admonition
+  - pymdownx.details
   - pymdownx.highlight:
       auto_title: true
       use_pygments: true
