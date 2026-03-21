@@ -1,11 +1,37 @@
 """Configuration for the application's encryption.
 
-If an encryption key is not given plain text passwords and other sensitive
-information will be saved directly in the database. This may be fine for dev
-installations but should be avoided in production.
+!!! danger
+    If an encryption key is not provided then sensitive information will be
+    stored in plain text in certain columns of the database (namely those
+    related to connecting to 3rd party services).
 
-Note that the user must ensure their key never changes once it is set, or the
-encrypted fields in the database will end up in an unreadable state.
+    This is probably fine for dev installations but should be avoided in
+    production.
+
+Generate an encryption key with this command:
+
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+Save the key this generates and either
+
+- Set it as an environment variable. e.g.
+  `TIGRQC_ENCRYPTION_KEY=your-generated-key`
+- Store it in a file and provide the path to it. e.g.
+  `TIGRQC_ENCRYPTION_KEY=/path/to/your/keyfile`
+
+If this key is lost or changed any currently encrypted information in the
+database will become permanently unreadable. It should also be protected and
+kept secret.
+
+Therefore
+
+- Back the key up securely.
+- Never commit your key to any git repository.
+- If you save the key in a file, restrict permissions so only the user that
+  runs the tigrqc app can read it.
+
 """
 import logging
 import os
