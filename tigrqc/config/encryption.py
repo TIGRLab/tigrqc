@@ -37,13 +37,15 @@ import logging
 import os
 from pathlib import Path
 
+from cryptography.fernet import Fernet
+
 from tigrqc.exceptions import ConfigException
 
 logger = logging.getLogger(__name__)
 
 
-def read_key(given_key: str) -> bytes:
-    """Read the encryption key from the provided file.
+def get_key(given_key: str) -> bytes:
+    """Get the user's provided key and verify it's valid.
 
     Args:
         given_key: The encryption key or the path to a file containing the
@@ -53,25 +55,55 @@ def read_key(given_key: str) -> bytes:
         bytes:  The byte-encoded key value.
 
     Raises:
-        ConfigException: When an encryption key file is given but unreadable.
+        ConfigException: If an invalid key is given, or an unreadable key
+            file is given.
     """
-    key_path = Path(given_key)
+    try:
+        Fernet(given_key)
+    except ValueError:
+        logger.debug(
+            '"TIGRQC_ENCRYPTION_KEY" not set to valid Fernet key. Will '
+            'treat it as a key file.'
+        )
+        given_key = _read_from_file(given_key)
+    return given_key.encode()
+
+
+def _read_from_file(key_file: str) -> str:
+    """Read the user's key from the given file path and verify it's valid.
+
+    Args:
+        key_file: The path to a file containing the Fernet key.
+
+    Returns:
+        bytes: The byte-encoded key value.
+
+    Raises:
+        ConfigException: When the keyfile is unreadable or contains an
+            invalid Fernet key.
+    """
+    key_path = Path(key_file)
 
     if not key_path.exists():
-        logger.debug(
-            '"TIGRQC_ENCRYPTION_KEY" is not an existing path. The value '
-            'itself is assumed to be a key.'
+        raise ConfigException(
+            f'"TIGRQC_ENCRYPTION_KEY" given invalid path {key_file}'
         )
-        return given_key.encode()
 
     try:
-        key = key_path.read_text(encoding='utf-8').strip()
-    except OSError as e:
+        given_key = key_path.read_text(encoding='utf-8').strip()
+    except (OSError, UnicodeDecodeError) as e:
         raise ConfigException(
-            f"Can't read the encryption key file - {e}"
+            f'"TIGRQC_ENCRYPTION_KEY" given unreadable key file - {key_file}'
         ) from e
 
-    return key.encode()
+    try:
+        Fernet(given_key)
+    except ValueError as e:
+        raise ConfigException(
+            '"TIGRQC_ENCRYPTION_KEY" given invalid encryption key.'
+        ) from e
+
+    return given_key
 
 
 user_key = os.environ.get('TIGRQC_ENCRYPTION_KEY', '')
@@ -79,7 +111,7 @@ user_key = os.environ.get('TIGRQC_ENCRYPTION_KEY', '')
 FERNEY_KEY: bytes | None = None
 
 if user_key:
-    FERNET_KEY = read_key(user_key)
+    FERNET_KEY = get_key(user_key)
 else:
     logger.warning(
         '"TIGRQC_ENCRYPTION_KEY" not given. Database encryption of sensitive '
