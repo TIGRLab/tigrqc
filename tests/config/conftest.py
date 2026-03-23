@@ -1,5 +1,7 @@
 """Fixtures for tests of tigrqc.config
 """
+from pathlib import Path
+
 from pytest import MonkeyPatch, fixture
 
 
@@ -13,3 +15,14 @@ def set_env(monkeypatch: MonkeyPatch):
         for key, value in add.items():
             monkeypatch.setenv(key, value)
     return _set
+
+
+@fixture
+def make_tmp_file(tmp_path):
+    """Create a tmp file with the specified contents and return the path.
+    """
+    def _make_tmp(contents: str, fname: str) -> Path:
+        path = tmp_path / fname
+        path.write_text(contents)
+        return path
+    return _make_tmp
