@@ -6,6 +6,62 @@ from urllib.parse import urlparse
 from sqlalchemy import String, TypeDecorator
 from sqlalchemy.engine.interfaces import Dialect
 
+from tigrqc.extensions import enc
+
+
+class EncryptedType(TypeDecorator[str]):
+    """A column type that ensures values are encrypted.
+
+    If encryption is enabled this will ensure the database only receives
+    encrypted values and that values are decrypted when accessed at runtime.
+
+    Example:
+        .. code-block:: Python
+
+            class SomeTable(Model):
+                some_secret_info: Mapped[String | None] = mapped_column(
+                    EncryptedType
+                )
+    """
+    impl = String
+    cache_ok = True
+
+    @property
+    def python_type(self):
+        """The type the column maps to.
+        """
+        return String
+
+    def process_bind_param(
+            self, value: str | None, dialect: Dialect
+    ) -> str | None:
+        """Encrypts the value (if encryption is enabled).
+
+        Args:
+            value: The value to be stored in the database.
+            dialect: The sqlalchemy dialect in use. Unused in this case.
+        """
+        return enc.encrypt(value) if value is not None else None
+
+    def process_result_value(
+            self, value: str | None, dialect: Dialect
+    ) -> str | None:
+        """Decrypts the value (if encryption is enabled).
+
+        Args:
+            value: The value to be retrieved from the database.
+            dialect: The sqlalchemy dialect in use. Unused in this case.
+        """
+        return enc.decrypt(value) if value is not None else None
+
+    def process_literal_param(
+            self, value: str | None, dialect: Dialect
+    ) -> str:
+        """Required to be defined. Returns the result of process_bind_param.
+        """
+        result = self.process_bind_param(value, dialect)
+        return result if result is not None else ''
+
 
 class PathType(TypeDecorator[Path]):
     """A column type that converts between String <-> pathlib.Path.
