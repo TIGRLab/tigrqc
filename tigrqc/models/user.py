@@ -3,7 +3,7 @@
 from typing import TYPE_CHECKING
 
 from flask_login import UserMixin
-from sqlalchemy import Boolean, ForeignKey, String, UniqueConstraint
+from sqlalchemy import Boolean, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from tigrqc.extensions import db
@@ -80,7 +80,7 @@ class UserAuth(TableMixin, Model):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(
-        ForeignKey('users.id'), nullable=False
+        Integer, ForeignKey('users.id'), nullable=False
     )
     provider: Mapped[str] = mapped_column(String(64), nullable=False)
     auth_id: Mapped[str] = mapped_column(String(256), nullable=False)
