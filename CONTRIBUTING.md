@@ -21,6 +21,7 @@ Please prefix each of your commits with one of these tags:
 - [ENH]: For commits that add new functionality or features or performance improvements
 - [FIX]: For bug fixes
 - [REF]: For refactoring
+- [STY]: For PEP or other style-related changes.
 - [TEST]: For changes that add or update tests
 
 ### Reporting Bugs
