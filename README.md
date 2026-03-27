@@ -10,3 +10,9 @@ pip install .
 # Or if using uv. This is editable by default.
 uv sync
 ```
+
+To run the app:
+```bash
+# Run as a development instance. Do this in the root folder.
+flask --app tigrqc run --debug
+```
