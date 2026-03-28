@@ -4,13 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tigrqc"
-version = "0.0.1"
+dynamic = ["version"]
 requires-python = ">=3.12"
 description = "TIGR Lab's Quality Control dashboard for MRI data."
 readme = "README.md"
+license = { file = "LICENSE.txt" }
 authors = [
     {name = "TIGR Lab", email = "TIGR.Lab@camh.ca"},
-    {name = "Dawn Smith", email = "Dawn.Smith@camh.ca"}
+    {name = "Dawn Smith", email = "Dawn.Smith@camh.ca"},
 ]
 keywords = ["neuroimaging", "mri", "quality control", "QC"]
 
@@ -41,6 +42,13 @@ extras = [
 tests = [
     "pytest>=9.0.2",
 ]
+
+[project.urls]
+Homepage = "https://imaging-genetics.camh.ca/tigrqc"
+Source = "https://github.com/TIGRLab/tigrqc"
+
+[tool.setuptools.dynamic]
+version = {attr = "tigrqc.__about__.__version__"}
 
 [tool.mypy]
 ignore_missing_imports = true
