@@ -5,6 +5,7 @@ from typing import Any, Mapping
 from flask import Flask
 
 from .__about__ import __copyright__, __version__
+from .context_processors import register_context_processors
 from .extensions import init_extensions
 from .load_blueprints import load_blueprints
 
@@ -34,5 +35,6 @@ def create_app(config: Mapping[str, Any] | None = None) -> Flask:
 
     init_extensions(app)
     load_blueprints(app)
+    register_context_processors(app)
 
     return app
