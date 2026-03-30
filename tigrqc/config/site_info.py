@@ -1,7 +1,7 @@
 """Configuration of site-specific information.
 
 These settings do not affect the functionality of the application but will
-be injected into the templates to personalize the website.
+be used to personalize the website.
 """
 import os
 
