@@ -54,6 +54,7 @@ docs/api/
 .mypy_cache
 
 # Miscellaneous
+env.sh
 .nfs*
 .*swp
 .*.sw*
@@ -61,3 +62,4 @@ process.yml
 *.log
 *.tmp
 *.sqlite
+*.key
