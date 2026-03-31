@@ -47,7 +47,7 @@ class Project(TableMixin, Model):
 
     sites: Mapped[dict[str, 'ProjectSite']] = relationship(
         'ProjectSite',
-        back_populates='study',
+        back_populates='project',
         collection_class=attribute_keyed_dict('site_id'),
         cascade='all, delete',
     )
@@ -100,10 +100,10 @@ class ProjectSite(TableMixin, Model):
     __tablename__ = 'project_sites'
 
     project_id: Mapped[str] = mapped_column(
-        'study', String(32), ForeignKey('projects.id'), primary_key=True
+        'project_id', String(32), ForeignKey('projects.id'), primary_key=True
     )
     site_id: Mapped[str] = mapped_column(
-        'site', String(32), ForeignKey('sites.id'), primary_key=True
+        'site_id', String(32), ForeignKey('sites.id'), primary_key=True
     )
 
     project: Mapped['Project'] = relationship(
