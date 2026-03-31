@@ -4,4 +4,5 @@
 
 from .database import *
 from .encryption import *
+from .flask import *
 from .site_info import *
