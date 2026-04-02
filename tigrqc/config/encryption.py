@@ -108,7 +108,7 @@ def _read_from_file(key_file: str) -> str:
 
 user_key = os.environ.get('TIGRQC_ENCRYPTION_KEY', '')
 
-FERNEY_KEY: bytes | None = None
+FERNET_KEY: bytes | None = None
 
 if user_key:
     FERNET_KEY = get_key(user_key)

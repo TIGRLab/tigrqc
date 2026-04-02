@@ -108,7 +108,7 @@ def test_ferney_key_is_none_when_no_key_given(set_env):
     """
     set_env(ENV_VARS, {})
     importlib.reload(enc)
-    assert enc.FERNEY_KEY is None
+    assert enc.FERNET_KEY is None
 
 
 def test_fernet_key_is_set_when_env_var_is_set_correctly(set_env):
