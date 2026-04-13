@@ -5,8 +5,9 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, ForeignKey, String, Text
 from sqlalchemy.orm import (Mapped, attribute_keyed_dict, mapped_column,
-                            relationship)
+                            relationship, validates)
 
+from tigrqc.exceptions import InvalidDataException
 from tigrqc.extensions import db
 from tigrqc.models.mixins import TableMixin
 from tigrqc.models.types import PathType
@@ -26,7 +27,7 @@ class Project(TableMixin, Model):
             ``None``.
         description: An extended description of the project and the data
             it contains. Optional, defaults to ``None``.
-        read_me: The contents of the project's 'README' file if one exists.
+        readme: The contents of the project's 'README' file if one exists.
             Optional, defaults to ``None``.
         readme_path: The path to the project's 'README' on the filesystem.
             Optional, defaults to ``None``.
@@ -39,7 +40,7 @@ class Project(TableMixin, Model):
     id: Mapped[str] = mapped_column(String(32), primary_key=True)
     name: Mapped[str | None] = mapped_column(String(1024))
     description: Mapped[str | None] = mapped_column(Text)
-    read_me: Mapped[str | None] = mapped_column(Text, deferred=True)
+    readme: Mapped[str | None] = mapped_column(Text, deferred=True)
     readme_path: Mapped[Path | None] = mapped_column(PathType)
     is_active: Mapped[Boolean] = mapped_column(
         Boolean, default=True, nullable=False
@@ -54,6 +55,39 @@ class Project(TableMixin, Model):
 
     def __repr__(self) -> str:
         return f'<Project {self.id}>'
+
+    @validates('id')
+    def validate_project_id(self, _, pid: str) -> str:
+        """Validate the given project ID.
+
+        Args:
+            value: The possible project ID.
+
+        Returns:
+            str: The unmodified project ID if it's valid.
+
+        Raises:
+            InvalidDataException:
+                - If the ID is less than 3 chars
+                - If the ID is more than 32 chars
+                - If the ID is not alphanumeric
+        """
+        if len(pid) < 3:
+            raise InvalidDataException(
+                f'Project ID too short (<3 chars) - {pid}'
+            )
+
+        if len(pid) > 32:
+            raise InvalidDataException(
+                f'Project ID too long (>32 chars) - {pid}'
+            )
+
+        if not pid.isalnum():
+            raise InvalidDataException(
+                f'Project ID must be alphanumeric - {pid}'
+            )
+
+        return pid
 
 
 class Site(TableMixin, Model):
