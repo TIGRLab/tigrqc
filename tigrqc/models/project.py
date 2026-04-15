@@ -61,7 +61,7 @@ class Project(TableMixin, Model):
         """Validate the given project ID.
 
         Args:
-            value: The possible project ID.
+            pid: The possible project ID.
 
         Returns:
             str: The unmodified project ID if it's valid.
