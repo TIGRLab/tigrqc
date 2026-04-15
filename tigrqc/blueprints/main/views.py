@@ -1,6 +1,6 @@
 """Core application views (project listing, creation, etc.)
 """
-from flask import render_template
+from flask import redirect, render_template, url_for
 from sqlalchemy import select
 
 from tigrqc.models import Project, db
@@ -41,3 +41,11 @@ def create_project():
         return render_template('project_list.html', projects=projects)
 
     return render_template('new_project.html', project_form=form)
+
+
+@main.route('/projects/<string:project_id>')
+def project_home(project_id=None):
+    """View a project's home page.
+    """
+    # This is just a placeholder for now, so 'url_for' can be used in templates
+    return redirect(url_for('main.index'))
