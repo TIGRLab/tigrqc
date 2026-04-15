@@ -13,8 +13,6 @@ from tigrqc.encryption import FernetEncryption
 if TYPE_CHECKING:
     from flask import Flask
 
-    from tigrqc.models import User
-
 
 # pylint: disable=too-few-public-methods
 class Base(DeclarativeBase):
@@ -33,13 +31,3 @@ def init_extensions(app: Flask) -> None:
     db.init_app(app)
     enc.init_app(app)
     lm.init_app(app)
-
-    @lm.user_loader
-    def load_user(uid: str) -> User | None:
-        # lazy import to avoid circular imports
-        # pylint: disable=import-outside-toplevel
-        from tigrqc.models import User
-        try:
-            return User.get(int(uid))
-        except ValueError:
-            return None

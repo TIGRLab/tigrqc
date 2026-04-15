@@ -6,7 +6,8 @@ from flask_login import UserMixin
 from sqlalchemy import Boolean, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from tigrqc.extensions import db
+from tigrqc.extensions import db, lm
+from tigrqc.interfaces import BaseUser
 from tigrqc.models.mixins import TableMixin
 
 if TYPE_CHECKING:
@@ -15,7 +16,7 @@ else:
     Model = db.Model
 
 
-class User(UserMixin, TableMixin, Model):
+class User(BaseUser, UserMixin, TableMixin, Model):
     """An application user.
 
     Attributes:
@@ -32,9 +33,11 @@ class User(UserMixin, TableMixin, Model):
             to ``None``.
         is_admin: Whether the user should have admin permissions. Optional,
             defaults to ``False``.
-        is_active: Whether the account is currently active. Optional,
+        active_account: Whether the account is currently active. Optional,
             defaults to ``False``.
         auth_methods: Authentication methods the user can use to log in.
+        is_active: Used by flask-login to determine if user is allowed to
+            login.
     """
     __tablename__ = 'users'
 
@@ -46,12 +49,20 @@ class User(UserMixin, TableMixin, Model):
     institution: Mapped[str | None] = mapped_column(String(128))
     phone_num: Mapped[str | None] = mapped_column(String(20))
     phone_ext: Mapped[str | None] = mapped_column(String(10))
-    is_admin: Mapped[bool | None] = mapped_column(Boolean, default=False)
-    is_active: Mapped[bool | None] = mapped_column(Boolean, default=False)
+    is_admin: Mapped[bool] = mapped_column(
+        Boolean, default=False, init=True, nullable=False
+    )
+    active_account: Mapped[bool] = mapped_column(
+        Boolean, default=False, init=True, nullable=False
+    )
 
     auth_methods: Mapped[list['UserAuth']] = relationship(
         'UserAuth', back_populates='user', cascade='all, delete-orphan'
     )
+
+    @property
+    def is_active(self) -> bool:
+        return self.active_account
 
     def __repr__(self) -> str:
         return f'<User {self.id}: {self.first_name} {self.last_name}>'
@@ -94,3 +105,13 @@ class UserAuth(TableMixin, Model):
 
     def __repr__(self) -> str:
         return f'<UserAuth {self.id}: ({self.user_id}, {self.provider})>'
+
+
+@lm.user_loader
+def load_user(uid: str) -> User | None:
+    """Tells flask-login how to load the user object.
+    """
+    try:
+        return User.get(int(uid))
+    except ValueError:
+        return None
