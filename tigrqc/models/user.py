@@ -26,7 +26,7 @@ class User(UserMixin, TableMixin, Model):
         email: The user's email. Optional, defaults to ``None``.
         position: The user's job position at their institution. Optional,
             defaults to ``None``.
-        institution: The insitution the user works at. Optional, defaults
+        institution: The institution the user works at. Optional, defaults
             to ``None``.
         phone_num: The user's phone number. Optional, defaults to ``None``.
         phone_ext: The user's phone extension if needed. Optional, defaults
