@@ -16,7 +16,7 @@ else:
     Model = db.Model
 
 
-class User(BaseUser, UserMixin, TableMixin, Model):
+class User(UserMixin, TableMixin, Model):
     """An application user.
 
     Attributes:
@@ -50,10 +50,10 @@ class User(BaseUser, UserMixin, TableMixin, Model):
     phone_num: Mapped[str | None] = mapped_column(String(20))
     phone_ext: Mapped[str | None] = mapped_column(String(10))
     is_admin: Mapped[bool] = mapped_column(
-        Boolean, default=False, init=True, nullable=False
+        Boolean, default=False, nullable=False
     )
     active_account: Mapped[bool] = mapped_column(
-        Boolean, default=False, init=True, nullable=False
+        Boolean, default=False, nullable=False
     )
 
     auth_methods: Mapped[list['UserAuth']] = relationship(
