@@ -4,7 +4,7 @@ from abc import ABC
 
 
 # pylint: disable=too-few-public-methods
-class BaseUser(ABC):
+class UserInterface(ABC):
     """Defines the interface all 'user'-like classes must implement.
 
     Currently this interface is trivial, but as we port more functionality

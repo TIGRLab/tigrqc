@@ -16,20 +16,20 @@ from flask import abort, redirect, request, session, url_for
 from flask_login import AnonymousUserMixin
 
 from tigrqc.exceptions import ConfigException
-from tigrqc.interfaces import BaseUser
+from tigrqc.interfaces import UserInterface
 
 if TYPE_CHECKING:
     from flask import Flask
     from flask_login import LoginManager
 
 
-class AnonymousUser(BaseUser, AnonymousUserMixin):
+class AnonymousUser(UserInterface, AnonymousUserMixin):
     """Represent a 'user' that has not logged in.
     """
     is_admin = False
 
 
-class NoAuthAnonymousUser(BaseUser, AnonymousUserMixin):
+class NoAuthAnonymousUser(UserInterface, AnonymousUserMixin):
     """Represent a 'user' when authentication is disabled.
     """
     is_admin = True

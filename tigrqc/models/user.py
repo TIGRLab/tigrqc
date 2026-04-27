@@ -1,13 +1,14 @@
 """Models and relationships for Users.
 """
+from abc import ABCMeta
 from typing import TYPE_CHECKING
 
 from flask_login import UserMixin
 from sqlalchemy import Boolean, ForeignKey, Integer, String, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import DeclarativeMeta, Mapped, mapped_column, relationship
 
 from tigrqc.extensions import db, lm
-from tigrqc.interfaces import BaseUser
+from tigrqc.interfaces import UserInterface
 from tigrqc.models.mixins import TableMixin
 
 if TYPE_CHECKING:
@@ -16,7 +17,28 @@ else:
     Model = db.Model
 
 
-class User(UserMixin, TableMixin, Model):
+class _UserCombinedMeta(DeclarativeMeta, ABCMeta):
+    """Combine MetaClasses to prevent inheritance issues.
+
+    Subclasses of the db.Model complain when you throw in an interface
+    that inherits from ABC. This resolves the metaclass inheritance issues.
+    """
+
+
+# pylint: disable=too-few-public-methods
+class UserModelBase(UserInterface, metaclass=_UserCombinedMeta):
+    """Resolve inheritance issues for database models.
+
+    The User model and any other user-like database model should inherit
+    from this class. AnonymousUser and other non-database user-like
+    objects can inherit directly from UserInterface.
+
+    All actual shared functionality should be defined on UserInterface,
+    not here. This just exists to resolve inheritance metaclass issues.
+    """
+
+
+class User(UserModelBase, UserMixin, TableMixin, Model):
     """An application user.
 
     Attributes:
