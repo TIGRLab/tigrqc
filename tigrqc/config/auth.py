@@ -9,9 +9,15 @@
 These settings change how the application applies user authentication and allow
 different authentication methods to be used to 'sign in'.
 
-When running the application in debug mode without any authentication methods
-configured note that user authentication will be automatically disabled and the
-'anonymous user' will have full admin access to the application.
+Authentication will be disabled in either of these situations:
+
+- The environment variable `TIGRQC_DISABLE_AUTH` is set to something 'truthy'.
+- The app is running in debug mode and no authentication methods have been
+    provided.
+
+Otherwise the application will attempt to run with authentication enabled and
+crash if it is unable to do so (for example, if auth methods are incorrectly
+configured).
 """
 from .utils import read_boolean
 
