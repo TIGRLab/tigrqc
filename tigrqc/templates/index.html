@@ -3,41 +3,17 @@
 {% block content %}
 <div class="container mt-4">
     {% if current_user.is_admin %}
-        <a role="button" class="btn btn-primary" href="{{ url_for('main.create_project') }}">
-            Create Project
-        </a>
+        <button
+            class="btn btn-primary"
+            hx-get="{{ url_for('main.add_project') }}"
+            hx-target="#main-content"
+        >
+            Add Project
+        </button>
     {% endif %}
-    <div class="list-group">
-        {% for project in projects %}
-            <div class="list-group-item py-3">
-                <div class="row align-items-center">
 
-                    <!-- Left: main info -->
-                    <div class="col-md-6">
-                        <h6 class="mb-1">
-                            {{ project.id }}
-                        </h6>
-                        <p class="mb-1 text-muted">
-                            {{ project.description }}
-                        </p>
-                    </div>
-
-                    <!-- Middle: metadata -->
-                    <!-- <div class="col-md-4">
-                        <div><strong>Participants:</strong> {{ project.num_sessions }}</div>
-                        <div><strong>Last Data:</strong> {{ project.last_scan_date }}</div>
-                    </div> -->
-
-                    <!-- Right: actions -->
-                    <div class="col-md-2 ms-auto text-end">
-                        <a href="{{ url_for('main.project_home', project_id=project.id) }}" class="btn btn-sm btn-outline-primary">
-                            View
-                        </a>
-                    </div>
-
-                </div>
-            </div>
-        {% endfor %}
+    <div id="main-content">
+        {% include "partials/_project_list.html" %}
     </div>
 </div>
 {% endblock %}
