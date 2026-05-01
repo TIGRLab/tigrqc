@@ -28,7 +28,7 @@ def _add_project(form: ProjectForm):
     project.save()
 
 
-def is_duplicate_project(exc: InvalidDataException) -> bool:
+def is_duplicate_project_exc(exc: InvalidDataException) -> bool:
     """Check if an exception was caused by a duplicate project ID.
 
     Args:
@@ -59,7 +59,7 @@ def add_project():
         try:
             _add_project(form)
         except InvalidDataException as e:
-            if is_duplicate_project(e):
+            if is_duplicate_project_exc(e):
                 # The user attempted to add a project with an already
                 # in-use project ID. Warn them.
                 flash(
