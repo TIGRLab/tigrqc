@@ -138,11 +138,11 @@ def add_site():
         try:
             site.save()
         except InvalidDataException as e:
-            flash('Invalid site ID or invalid form contents.')
-            return
-        sites = _get_sites()
-        # Site has been added, so re-display the original list with
-        # the new site in it.
-        return render_template('partials/_select_site.html', sites=sites)
+            flash('Invalid site ID or invalid form contents.', 'danger')
+        else:
+            sites = _get_sites()
+            # Site has been added, so re-display the original list with
+            # the new site in it.
+            return render_template('partials/_select_site.html', sites=sites)
 
     return render_template('partials/_add_site.html', site_form=site_form)
