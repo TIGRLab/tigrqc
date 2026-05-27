@@ -1,0 +1,36 @@
+<form hx-post="/sites/add-site"
+      hx-target="#site-container"
+      hx-swap="innerHTML"
+>
+  {{ site_form.hidden_tag() }}
+  {% for field in site_form %}
+    <div class="mb-3">
+        {{ field.label(class="form-label") }}
+
+        {% if field.type in ["SelectField", "QuerySelectMultipleField"] %}
+            {{ field(class="form-select") }}
+        {% else %}
+            {{ field(class="form-control") }}
+        {% endif %}
+
+        {% if field.errors %}
+            {% for error in field.errors %}
+                <span class="text-danger small">
+                    {{ error }}
+                </span>
+            {% endfor %}
+        {% endif %}
+    </div>
+  {% endfor %}
+  <button type="submit" class="btn btn-primary">
+    Create Site
+  </button>
+  <button type="button"
+          hx-get="/sites/add-site"
+          hx-target="#add-item-container"
+          hx-swap="innerHTML"
+          class="btn btn-danger"
+  >
+    Cancel
+  </button>
+</form>

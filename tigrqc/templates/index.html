@@ -2,16 +2,6 @@
 
 {% block content %}
 <div class="container mt-4">
-    {% if current_user.is_admin %}
-        <button
-            class="btn btn-primary"
-            hx-get="{{ url_for('main.add_project') }}"
-            hx-target="#main-content"
-        >
-            Add Project
-        </button>
-    {% endif %}
-
     <div id="main-content">
         {% include "partials/_project_list.html" %}
     </div>

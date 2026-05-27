@@ -1,6 +1,8 @@
 <!-- Form to add a new project to the database -->
 {% include 'flash.html' %}
-
+<a class="btn btn-primary" href="{{ url_for('main.index') }}">
+    Back
+</a>
 <div class="container d-flex justify-content-center mt-5">
     <div class="col-12 col-md-6 col-lg-4">
         <div class="card shadow-sm">
@@ -17,12 +19,20 @@
 
                     {% for field in project_form %}
                         {% if field.widget.input_type != 'hidden' %}
-                            {% if field.type == "BooleanField" %}
+                            {% if field.render_kw and field.render_kw.id == 'select-site' %}
+                                <!-- Handle the site-select separately so the element can be swapped out
+                                     when the user needs to add a site -->
+                                <div id="site-container">
+                                    {% include 'partials/_select_site.html' %}
+                                </div>
+                            {% elif field.type == "BooleanField" %}
+                                <!-- Handle BooleanField separately so nicer formatting can be applied -->
                                 <div class="form-check form-switch mb-3">
                                     {{ field(class="form-check-input") }}
                                     {{ field.label(class="form-check-label") }}
                                 </div>
                             {% else %}
+                                <!-- Other fields get automatically rendered here -->
                                 <div class="mb-3">
                                     {{ field.label(class="form-label") }}
 

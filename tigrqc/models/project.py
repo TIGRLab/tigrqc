@@ -94,8 +94,9 @@ class Site(TableMixin, Model):
     """Scan collection sites.
 
     Attributes:
-        id: A unique short (<=32 character), code that identifies the scan
+        id: A unique, short (<=12 character), code that identifies the scan
             site. Primary key.
+        name: An extended name for the scan site. Defaults to ``None``.
         description: A description of the scan site. Optional, defaults to
             ``None``.
         projects: Project configuration for projects that collect data from
@@ -103,8 +104,9 @@ class Site(TableMixin, Model):
     """
     __tablename__ = 'sites'
 
-    id: Mapped[str] = mapped_column(String(32), primary_key=True)
-    description: Mapped[str] = mapped_column(Text, deferred=True)
+    id: Mapped[str] = mapped_column(String(12), primary_key=True)
+    name: Mapped[str | None] = mapped_column(String(128))
+    description: Mapped[str | None] = mapped_column(Text, deferred=True)
 
     projects: Mapped[dict[str, 'ProjectSite']] = relationship(
         'ProjectSite',
@@ -112,6 +114,10 @@ class Site(TableMixin, Model):
         collection_class=attribute_keyed_dict('project_id'),
         cascade='all, delete',
     )
+
+    @property
+    def label(self) -> str:
+        return f'{self.id} - {self.name}' if self.name else self.id
 
     def __repr__(self):
         return f'<Site {self.id}>'

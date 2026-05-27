@@ -1,0 +1,18 @@
+<label class="form-label" for="sites">
+    Sites
+</label>
+<select class="form-select"
+        id="select-site"
+        name="sites"
+        multiple
+>
+  {% for site in sites %}
+    <option value="{{ site.id }}">{{ site.label }}</option>
+  {% endfor %}
+</select>
+<button type="button"
+        hx-get="/sites/add-site"
+        hx-target="#site-container"
+        hx-swap="innerHTML">
+  Add Site
+</button>
