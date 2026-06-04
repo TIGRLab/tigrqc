@@ -123,13 +123,6 @@ def project_home(project_id=None):
 def add_site():
     """Add a new scan site.
     """
-
-    # Todo:
-    #   - Implement the 'cancel' button for the subform. Must 'post' here
-    #     with flag so db update / form validate is skipped
-    #   - Implement the saving/restoring of any selected sites that may have
-    #     been selected by the user before hitting the 'add site' button
-
     site_form = SiteForm()
 
     if site_form.validate_on_submit():
@@ -137,7 +130,7 @@ def add_site():
         site_form.populate_obj(site)
         try:
             site.save()
-        except InvalidDataException as e:
+        except InvalidDataException:
             flash('Invalid site ID or invalid form contents.', 'danger')
         else:
             sites = _get_sites()
@@ -146,3 +139,11 @@ def add_site():
             return render_template('partials/_select_site.html', sites=sites)
 
     return render_template('partials/_add_site.html', site_form=site_form)
+
+
+@main.route('/sites/add-site/cancel', methods=['GET'])
+def add_site_cancel():
+    """Re-render the list of scan sites for the 'add project' form.
+    """
+    sites = _get_sites()
+    return render_template('partials/_select_site.html', sites=sites)
