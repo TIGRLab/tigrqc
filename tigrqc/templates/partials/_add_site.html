@@ -4,7 +4,7 @@
       hx-swap="innerHTML"
 >
   {{ site_form.hidden_tag() }}
-  {% for field in site_form %}
+  {% for field in site_form if field.widget.input_type != 'hidden' %}
     <div class="mb-3">
         {{ field.label(class="form-label") }}
 
