@@ -17,40 +17,38 @@
                 >
                     {{ project_form.hidden_tag() }}
 
-                    {% for field in project_form %}
-                        {% if field.widget.input_type != 'hidden' %}
-                            {% if field.render_kw and field.render_kw.id == 'select-site' %}
-                                <!-- Handle the site-select separately so the element can be swapped out
-                                     when the user needs to add a site -->
-                                <div id="site-container">
-                                    {% include 'partials/_select_site.html' %}
-                                </div>
-                            {% elif field.type == "BooleanField" %}
-                                <!-- Handle BooleanField separately so nicer formatting can be applied -->
-                                <div class="form-check form-switch mb-3">
-                                    {{ field(class="form-check-input") }}
-                                    {{ field.label(class="form-check-label") }}
-                                </div>
-                            {% else %}
-                                <!-- Other fields get automatically rendered here -->
-                                <div class="mb-3">
-                                    {{ field.label(class="form-label") }}
+                    {% for field in project_form if field.widget.input_type != 'hidden' %}
+                        {% if field.render_kw and field.render_kw.id == 'select-site' %}
+                            <!-- Handle the site-select separately so the element can be swapped out
+                                    when the user needs to add a site -->
+                            <div id="site-container">
+                                {% include 'partials/_select_site.html' %}
+                            </div>
+                        {% elif field.type == "BooleanField" %}
+                            <!-- Handle BooleanField separately so nicer formatting can be applied -->
+                            <div class="form-check form-switch mb-3">
+                                {{ field(class="form-check-input") }}
+                                {{ field.label(class="form-check-label") }}
+                            </div>
+                        {% else %}
+                            <!-- Other fields get automatically rendered here -->
+                            <div class="mb-3">
+                                {{ field.label(class="form-label") }}
 
-                                    {% if field.type in ["SelectField", "QuerySelectMultipleField"] %}
-                                        {{ field(class="form-select") }}
-                                    {% else %}
-                                        {{ field(class="form-control") }}
-                                    {% endif %}
+                                {% if field.type in ["SelectField", "QuerySelectMultipleField"] %}
+                                    {{ field(class="form-select") }}
+                                {% else %}
+                                    {{ field(class="form-control") }}
+                                {% endif %}
 
-                                    {% if field.errors %}
-                                        {% for error in field.errors %}
-                                            <span class="text-danger small">
-                                                {{ error }}
-                                            </span>
-                                        {% endfor %}
-                                    {% endif %}
-                                </div>
-                            {% endif %}
+                                {% if field.errors %}
+                                    {% for error in field.errors %}
+                                        <span class="text-danger small">
+                                            {{ error }}
+                                        </span>
+                                    {% endfor %}
+                                {% endif %}
+                            </div>
                         {% endif %}
                     {% endfor %}
                     <button type="submit" class="btn btn-primary w-100">
