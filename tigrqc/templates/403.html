@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+
+{% block content %}
+    <h1>403 - Permission denied.</h1>
+    <p>
+        You do not have sufficient permissions to perform this action.
+        If you think this is an error please contact an admin to ask for your
+        account permissions to be updated.
+    </p>
+    <a class="btn btn-primary" href="{{ url_for('main.index') }}">
+        Return to Home
+    </a>
+{% endblock %}
