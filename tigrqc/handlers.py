@@ -43,7 +43,6 @@ def default_error_handler(_error: Exception) -> ResponseReturnValue:
 def handle_404(_error: NotFound) -> ResponseReturnValue:
     """Handle '404' exceptions.
     """
-    logger.debug('404: %s', request.path)
     return render_template('404.html'), 404
 
 
