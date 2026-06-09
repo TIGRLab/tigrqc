@@ -26,13 +26,17 @@ if TYPE_CHECKING:
 class AnonymousUser(UserInterface, AnonymousUserMixin):
     """Represent a 'user' that has not logged in.
     """
+    id = -1
     is_admin = False
+    active_account = True
 
 
 class NoAuthAnonymousUser(UserInterface, AnonymousUserMixin):
     """Represent a 'user' when authentication is disabled.
     """
+    id = -99
     is_admin = True
+    active_account = True
 
 
 def auth_disabled(app: Flask) -> bool:
