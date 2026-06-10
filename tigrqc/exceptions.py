@@ -15,3 +15,13 @@ class ConfigException(TigrQcException):
 class InvalidDataException(TigrQcException):
     """Raised when attempting to commit invalid data to the database.
     """
+
+
+class UserException(TigrQcException):
+    """Raised from user errors when messages must be relayed to them.
+    """
+    def __init__(self, err_msg, level='warning', redirect=None):
+        self.message = err_msg
+        self.level = level
+        self.redirect = redirect
+        super().__init__(err_msg)
