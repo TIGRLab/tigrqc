@@ -2,10 +2,10 @@
 """
 from collections.abc import Sequence
 
-from flask import flash, redirect, render_template, url_for
+from flask import redirect, render_template, url_for
 from sqlalchemy import select
 
-from tigrqc.exceptions import InvalidDataException
+from tigrqc.exceptions import InvalidDataException, UserException
 from tigrqc.models import Project, Site, db
 
 from . import main_bp as main
@@ -56,6 +56,18 @@ def is_duplicate_project_exc(exc: InvalidDataException) -> bool:
     )
 
 
+def is_duplicate_site_exc(exc: InvalidDataException) -> bool:
+    """Check if an exception was caused by a duplicated site ID.
+
+    Args:
+        exc: An InvalidDataException that has been caught.
+    """
+    return (
+        'IntegrityError' in str(exc) and
+        f'{Site.__tablename__}.id' in str(exc)
+    )
+
+
 @main.route('/')
 @main.route('/index')
 def index():
@@ -86,23 +98,19 @@ def add_project():
             if is_duplicate_project_exc(e):
                 # The user attempted to add a project with an already
                 # in-use project ID. Warn them.
-                flash(
+                raise UserException(
                     'Project ID must be unique, ID already in use.',
                     'danger'
-                )
-            else:
-                # Generic warning for other form/database issues.
-                flash(
-                    'Invalid project configuration. Please review contents.',
-                    'danger'
-                )
-        else:
-            # On success show updated project list. Otherwise fall through
-            # and re-render 'add project' form (with flashed messages added)
-            projects = _get_projects()
-            return render_template(
-                'partials/_project_list.html', projects=projects
-            )
+                ) from e
+            # Generic warning for other form/database issues.
+            raise UserException(
+                'Invalid project configuration. Please review contents.',
+                'danger'
+            ) from e
+        projects = _get_projects()
+        return render_template(
+            'partials/_project_list.html', projects=projects
+        )
 
     return render_template(
         'partials/_add_project.html',
@@ -130,13 +138,20 @@ def add_site():
         site_form.populate_obj(site)
         try:
             site.save()
-        except InvalidDataException:
-            flash('Invalid site ID or invalid form contents.', 'danger')
-        else:
-            sites = _get_sites()
-            # Site has been added, so re-display the original list with
-            # the new site in it.
-            return render_template('partials/_select_site.html', sites=sites)
+        except InvalidDataException as e:
+            if is_duplicate_site_exc(e):
+                raise UserException(
+                    'Duplicated site ID. Please enter a unique ID',
+                    'danger'
+                ) from e
+            raise UserException(
+                'Invalid site ID or invalid form contents.',
+                'danger'
+            ) from e
+        # Site has been added, so re-display the original list with
+        # the new site in it.
+        sites = _get_sites()
+        return render_template('partials/_select_site.html', sites=sites)
 
     return render_template('partials/_add_site.html', site_form=site_form)
 
