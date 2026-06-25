@@ -6,7 +6,7 @@ from flask import redirect, render_template, url_for
 from sqlalchemy import select
 
 from tigrqc.exceptions import InvalidDataException, UserException
-from tigrqc.models import Project, Site, db
+from tigrqc.models import Project, ProjectSite, Site, db
 
 from . import main_bp as main
 from .forms import ProjectForm, SiteForm
@@ -39,8 +39,13 @@ def _add_project(form: ProjectForm):
         form: A ProjectForm containing project details to add to the database.
     """
     project = Project()
+    chosen_sites = _get_sites(form.sites.data)
+    form.sites.data = {}
     form.populate_obj(project)
-    project.scans = _get_sites(form.sites.data)
+    project.sites = {
+        site.id: ProjectSite(project_id=project.id, site_id=site.id)
+        for site in chosen_sites
+    }
     project.save()
 
 
