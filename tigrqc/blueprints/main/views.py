@@ -1,6 +1,7 @@
 """Core application views (project listing, creation, etc.)
 """
 from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 from flask import redirect, render_template, url_for
 from sqlalchemy import select
@@ -11,6 +12,11 @@ from tigrqc.models import Project, ProjectSite, Site, db
 from . import main_bp as main
 from .forms import ProjectForm, SiteForm
 
+if TYPE_CHECKING:
+    from flask_sqlalchemy.model import Model
+else:
+    Model = db.Model
+
 
 def _get_projects() -> Sequence[Project]:
     """Get all projects currently in the database.
@@ -19,7 +25,7 @@ def _get_projects() -> Sequence[Project]:
     return db.session.scalars(statement).all()
 
 
-def _get_sites(sites: list = None) -> Sequence[Site]:
+def _get_sites(sites: list[str] | None = None) -> Sequence[Site]:
     """Get all scan sites currently in the database.
 
     Args:
@@ -43,33 +49,24 @@ def _add_project(form: ProjectForm):
     form.sites.data = {}
     form.populate_obj(project)
     project.sites = {
-        site.id: ProjectSite(project_id=project.id, site_id=site.id)
+        site.id: ProjectSite(
+            project_id=project.id, site_id=site.id
+        )  # type: ignore[call-arg]
         for site in chosen_sites
     }
     project.save()
 
 
-def is_duplicate_project_exc(exc: InvalidDataException) -> bool:
-    """Check if an exception was caused by a duplicate project ID.
+def is_duplicate_id(exc: InvalidDataException, table: Model) -> bool:
+    """Check if an exception was caused by a duplicate ID for a record.
 
     Args:
         exc: An InvalidDataException that has been caught.
+        table: The table that the record was to be added to.
     """
     return (
         'IntegrityError' in str(exc) and
-        f'{Project.__tablename__}.id' in str(exc)
-    )
-
-
-def is_duplicate_site_exc(exc: InvalidDataException) -> bool:
-    """Check if an exception was caused by a duplicated site ID.
-
-    Args:
-        exc: An InvalidDataException that has been caught.
-    """
-    return (
-        'IntegrityError' in str(exc) and
-        f'{Site.__tablename__}.id' in str(exc)
+        f'{table.__tablename__}.id' in str(exc)   # type: ignore[attr-defined]
     )
 
 
@@ -100,7 +97,7 @@ def add_project():
         try:
             _add_project(project_form)
         except InvalidDataException as e:
-            if is_duplicate_project_exc(e):
+            if is_duplicate_id(e, Project):
                 # The user attempted to add a project with an already
                 # in-use project ID. Warn them.
                 raise UserException(
@@ -144,7 +141,7 @@ def add_site():
         try:
             site.save()
         except InvalidDataException as e:
-            if is_duplicate_site_exc(e):
+            if is_duplicate_id(e, Site):
                 raise UserException(
                     'Duplicated site ID. Please enter a unique ID',
                     'danger'
