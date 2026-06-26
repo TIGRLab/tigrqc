@@ -131,9 +131,9 @@ class ProjectSite(TableMixin, Model):
 
     Attributes:
         project_id: The ID of the project that this configuration belongs to.
-            Primary key, Foreign key on ``Projects.id``.
+            Primary key, Foreign key on ``Project.id``.
         site_id: The ID of the site that this configuration belongs to.
-            Primary key, Foreign key on ``Sites.id``.
+            Primary key, Foreign key on ``Site.id``.
         project: The project this configuration belongs to.
         site: The scan site this configuration belongs to.
     """
