@@ -3,7 +3,7 @@
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
-from flask import redirect, render_template, url_for
+from flask import render_template
 from sqlalchemy import select
 
 from tigrqc.exceptions import InvalidDataException, UserException
@@ -18,15 +18,21 @@ else:
     Model = db.Model
 
 
-def _get_projects() -> Sequence[Project]:
-    """Get all projects currently in the database.
+def _get_projects(projects: list[str] | None = None) -> Sequence[Project]:
+    """Get projects currently in the database.
+
+    Args:
+        projects: A list of project IDs to retrieve records for. Optional,
+            if omitted all projects will be returned.
     """
     statement = select(Project)
+    if projects:
+        statement = statement.where(Project.id.in_(projects))
     return db.session.scalars(statement).all()
 
 
 def _get_sites(sites: list[str] | None = None) -> Sequence[Site]:
-    """Get all scan sites currently in the database.
+    """Get scan sites currently in the database.
 
     Args:
         sites: A list of site IDs to retrieve records for. Optional, if
@@ -125,8 +131,11 @@ def add_project():
 def project_home(project_id=None):
     """View a project's home page.
     """
-    # This is just a placeholder for now, so 'url_for' can be used in templates
-    return redirect(url_for('main.index'))
+    project = _get_projects([project_id])
+    if len(project) != 1:
+        raise InvalidDataException(f'Project {project_id} not found')
+    project = project[0]
+    return render_template('project.html', project=project)
 
 
 @main.route('/sites/add-site', methods=['GET', 'POST'])
