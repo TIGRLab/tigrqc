@@ -3,7 +3,7 @@
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
-from flask import render_template
+from flask import redirect, render_template, url_for
 from sqlalchemy import select
 
 from tigrqc.exceptions import InvalidDataException, UserException
@@ -127,17 +127,6 @@ def add_project():
     )
 
 
-@main.route('/projects/<string:project_id>')
-def project_home(project_id=None):
-    """View a project's home page.
-    """
-    project = _get_projects([project_id])
-    if len(project) != 1:
-        raise InvalidDataException(f'Project {project_id} not found')
-    project = project[0]
-    return render_template('project.html', project=project)
-
-
 @main.route('/sites/add-site', methods=['GET', 'POST'])
 def add_site():
     """Add a new scan site.
@@ -173,3 +162,21 @@ def add_site_cancel():
     """
     sites = _get_sites()
     return render_template('partials/_select_site.html', sites=sites)
+
+
+@main.route('/projects/<string:project_id>')
+def project_home(project_id: str = ""):
+    """View a project's home page.
+    """
+    projects = _get_projects([project_id])
+    if len(projects) != 1:
+        raise InvalidDataException(f'Project {project_id} not found')
+    project = projects[0]
+    return render_template('project.html', project=project)
+
+
+@main.route('/projects/<string:project_id>/settings')
+def project_settings(project_id: str = ""):
+    """View or modify a project's settings.
+    """
+    return redirect(url_for('main.index'))

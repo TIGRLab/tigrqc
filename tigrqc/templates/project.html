@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% include "partials/_flash.html" %}
+{% block content %}
+
+<!-- The page header -->
+<div class="p-4 p-md-5 mb-4 rounded-3 border bg-secondary-subtle">
+  <div class="row align-items-stretch g-4">
+    <div class="col-lg-7">
+      <h1 class="display-5 fw-bold">{{ project.name or project.id }}</h1>
+      {% if project.description %}
+        <p class="lead mb-4">
+            {{ project.description }}
+        </p>
+      {% endif %}
+      <p class="lead mb-0">
+        <!-- Add number of human and pha timepoints -->
+        <!-- Add date of last scan (either redcap or xnat update) -->
+        This is a placeholder for the session counts, etc.
+      </p>
+    </div>
+
+    <div class="col-auto d-none d-lg-flex align-items-stretch px-0">
+      <div class="vr" style="height: 100%"></div>
+    </div>
+
+    <div class="col-lg">
+      <div class="d-grid gap-2">
+        <a href="{{ url_for('main.project_settings', project_id=project.id) }}"
+            class="btn btn-primary text-start">
+           Settings
+        </a>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Add overview of pending issues here -->
+<!-- Add nightly log here -->
+
+<!-- Add tabs here -->
+<!-- default tab: overview -->
+<!-- alt tab: session list + search bar -->
+
+{% endblock %}
