@@ -69,10 +69,14 @@ def user_error_handler(error: UserException) -> ResponseReturnValue:
     return redirect(error.redirect or request.referrer or url_for('index'))
 
 
-def handle_404(_error: NotFound) -> ResponseReturnValue:
-    """Handle '404' exceptions.
+def handle_401(_error: Forbidden) -> ResponseReturnValue:
+    """Handle exceptions from unidentified users accessing private views.
     """
-    return render_template('404.html'), 404
+    logger.debug(
+        '401: User %s blocked from accessing a page that requires fresh login',
+        current_user.id
+    )
+    return render_template('401.html'), 401
 
 
 def handle_403(_error: Forbidden) -> ResponseReturnValue:
@@ -83,6 +87,12 @@ def handle_403(_error: Forbidden) -> ResponseReturnValue:
         current_user.id
     )
     return render_template('403.html'), 403
+
+
+def handle_404(_error: NotFound) -> ResponseReturnValue:
+    """Handle '404' exceptions.
+    """
+    return render_template('404.html'), 404
 
 
 def register_error_handlers(app: Flask) -> Flask:
@@ -96,6 +106,7 @@ def register_error_handlers(app: Flask) -> Flask:
         Exception,
         default_error_handler,
     )
-    app.register_error_handler(404, handle_404)
+    app.register_error_handler(401, handle_401)
     app.register_error_handler(403, handle_403)
+    app.register_error_handler(404, handle_404)
     return app

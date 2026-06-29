@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+
+{% block content %}
+    <h1>401 - Unknown User</h1>
+    <p>
+        You must be logged in to view this page or resource. Please contact an
+        admin if you feel this is an error.
+    </p>
+    <a class="btn btn-primary" href="{{ url_for('main.index') }}">
+        Return to Home
+    </a>
+{% endblock %}
