@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from flask_login import LoginManager
 from flask_sqlalchemy import SQLAlchemy
+from flask_wtf import CSRFProtect
 from sqlalchemy.orm import DeclarativeBase
 
 from tigrqc.access import set_anon_user
@@ -21,6 +22,7 @@ class Base(DeclarativeBase):
     """
 
 
+csrf = CSRFProtect()
 db = SQLAlchemy(model_class=Base)
 enc = FernetEncryption()
 lm = LoginManager()
@@ -29,6 +31,7 @@ lm = LoginManager()
 def init_extensions(app: Flask) -> None:
     """Initialize all extensions.
     """
+    csrf.init_app(app)
     db.init_app(app)
     enc.init_app(app)
 
