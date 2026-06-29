@@ -10,17 +10,22 @@ This mode should **never be run in production**.
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from collections.abc import Callable
+from functools import wraps
+from typing import TYPE_CHECKING, ParamSpec, TypeVar
 
 from flask import abort, redirect, request, session, url_for
-from flask_login import AnonymousUserMixin
+from flask_login import AnonymousUserMixin, current_user
 
-from tigrqc.exceptions import ConfigException
+from tigrqc.exceptions import ConfigException, UserException
 from tigrqc.interfaces import UserInterface
 
 if TYPE_CHECKING:
     from flask import Flask
     from flask_login import LoginManager
+
+P = ParamSpec('P')
+R = TypeVar('R')
 
 
 class AnonymousUser(UserInterface, AnonymousUserMixin):
@@ -123,3 +128,24 @@ def set_anon_user(app: Flask, lm: LoginManager):
         lm.anonymous_user = NoAuthAnonymousUser
         return
     lm.anonymous_user = AnonymousUser
+
+
+def global_admin_required(func: Callable[P, R]) -> Callable[P, R]:
+    """A decorator to restrict a route only to users with max permissions.
+
+    Note that this is different from a 'project admin' which is a user who
+    has elevated permissions only for a single project. This decorator
+    allows route access only to users who have the highest level of global
+    privilege.
+
+    Args:
+        func: The function to be wrapped.
+    """
+    @wraps(func)
+    def global_admin_only(*args: P.args, **kwargs: P.kwargs) -> R:
+        if not current_user.is_admin:
+            raise UserException(
+                'Permission denied - admin permissions required.'
+            )
+        return func(*args, **kwargs)
+    return global_admin_only
