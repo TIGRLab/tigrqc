@@ -3,9 +3,11 @@
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
-from flask import redirect, render_template, url_for
+from flask import flash, redirect, render_template, url_for
+from flask_login import fresh_login_required
 from sqlalchemy import select
 
+from tigrqc.access import global_admin_required
 from tigrqc.exceptions import InvalidDataException, UserException
 from tigrqc.models import Project, ProjectSite, Site, db
 
@@ -18,16 +20,22 @@ else:
     Model = db.Model
 
 
-def _get_projects(projects: list[str] | None = None) -> Sequence[Project]:
+def _get_projects(
+        projects: list[str] | None = None,
+        sort: bool = False
+) -> Sequence[Project]:
     """Get projects currently in the database.
 
     Args:
         projects: A list of project IDs to retrieve records for. Optional,
             if omitted all projects will be returned.
+        sort: Whether to sort the output by the ID column.
     """
     statement = select(Project)
     if projects:
         statement = statement.where(Project.id.in_(projects))
+    if sort:
+        statement = statement.order_by(Project.id)
     return db.session.scalars(statement).all()
 
 
@@ -81,7 +89,7 @@ def is_duplicate_id(exc: InvalidDataException, table: Model) -> bool:
 def index():
     """The main landing page.
     """
-    projects = _get_projects()
+    projects = _get_projects(sort=True)
     return render_template('index.html', projects=projects)
 
 
@@ -165,18 +173,30 @@ def add_site_cancel():
 
 
 @main.route('/projects/<string:project_id>')
-def project_home(project_id: str = ""):
+def project_home(project_id: str = ''):
     """View a project's home page.
     """
-    projects = _get_projects([project_id])
-    if len(projects) != 1:
-        raise InvalidDataException(f'Project {project_id} not found')
-    project = projects[0]
+    project = Project.query.get_or_404(project_id)
     return render_template('project.html', project=project)
 
 
 @main.route('/projects/<string:project_id>/settings')
-def project_settings(project_id: str = ""):
+@global_admin_required
+@fresh_login_required
+def project_settings(project_id: str = ''):
     """View or modify a project's settings.
     """
+    project = Project.query.get_or_404(project_id)
+    return render_template('project_settings.html', project=project)
+
+
+@main.route('/projects/<string:project_id>/delete', methods=['POST'])
+@global_admin_required
+@fresh_login_required
+def delete_project(project_id: str = ''):
+    """Delete a project and all of its contents from the database.
+    """
+    project = Project.query.get_or_404(project_id)
+    project.delete()
+    flash(f'{project.id} successfully deleted.', 'success')
     return redirect(url_for('main.index'))
