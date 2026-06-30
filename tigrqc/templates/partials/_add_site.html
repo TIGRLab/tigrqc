@@ -1,6 +1,7 @@
 <form hx-post="/sites/add-site"
       hx-target="#site-container"
       hx-swap="innerHTML"
+      autocomplete="off"
 >
   {{ site_form.hidden_tag() }}
   {% for field in site_form if field.widget.input_type != 'hidden' %}
