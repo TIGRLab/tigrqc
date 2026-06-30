@@ -1,0 +1,102 @@
+<div
+    id="deleteDangerModal"
+    class="modal fade"
+    tabindex="-1"
+    aria-labelledby="deleteDangerModalLabel"
+    aria-hidden="true"
+>
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header border-0 pb-0">
+        <button
+            type="button"
+            class="btn-close"
+            data-bs-dismiss="modal"
+            aria-label="Close"
+        ></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted">
+          This will permanently delete <strong id="modal-item-name"></strong>
+          and all associated data. This action cannot be undone.
+        </p>
+
+        <label class="form-label text-muted small">
+          Type <strong id="modal-confirm-hint" class="text-body"></strong> to confirm
+        </label>
+        <input
+          type="text"
+          id="confirm-name-input"
+          class="form-control"
+          placeholder=""
+          autocomplete="off"
+        />
+        <div id="confirm-feedback" class="form-text" style="min-height: 1.2em;"></div>
+      </div>
+      <div class="modal-footer border-0">
+        <form id="delete-form" method="POST" action="">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" id="delete-submit-btn" class="btn btn-outline-danger" disabled>
+            <i class="bi bi-trash me-1"></i>Delete
+          </button>
+        </form>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+            Cancel
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="text/javascript">
+  const deleteModal = document.getElementById('deleteDangerModal');
+
+  /**
+   * Populates the deleteDangerModal with text (and url target) specific to
+   * the thing about to be deleted. It also enables/disables the delete
+   * button of the modal based on the status of the confirmation text field and
+   * provides feedback to the user on the status of their confirmation.
+   */
+  deleteModal.addEventListener('show.bs.modal', event => {
+    const trigger = event.relatedTarget;
+    const itemName = trigger.dataset.itemName;
+    const deleteUrl   = trigger.dataset.deleteUrl;
+
+    // Populate the modal text
+    document.getElementById('modal-item-name').textContent = itemName;
+    document.getElementById('modal-confirm-hint').textContent  = itemName;
+    document.getElementById('delete-form').action = deleteUrl;
+
+    // Reset state
+    const input    = document.getElementById('confirm-name-input');
+    const feedback = document.getElementById('confirm-feedback');
+    const btn      = document.getElementById('delete-submit-btn');
+    input.value    = '';
+    input.placeholder = itemName;
+    input.classList.remove('is-valid', 'is-invalid');
+    feedback.textContent = '';
+    btn.disabled = true;
+
+    // Validation on each keystroke
+    input.oninput = () => {
+      const match = input.value === itemName;
+      const empty = input.value === '';
+
+      input.classList.toggle('is-valid',   match);
+      input.classList.toggle('is-invalid', !match && !empty);
+
+      feedback.className = match
+        ? 'form-text text-success'
+        : 'form-text text-danger';
+      feedback.textContent = empty   ? ''
+        : match ? '✓ Name matches'
+        : itemName.startsWith(input.value) ? 'Keep typing…'
+        : 'Doesn\'t match — check the name';
+
+      btn.disabled = !match;
+      btn.classList.toggle('btn-danger', match);
+      btn.classList.toggle('btn-outline-danger', !match);
+    };
+  });
+
+</script>
