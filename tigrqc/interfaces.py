@@ -32,6 +32,6 @@ class UserInterface(ABC):
 
     @property
     @abstractmethod
-    def active_account(self) -> bool:
+    def is_active(self) -> bool:
         """Whether the 'user' is considered usable or is deactivated.
         """
