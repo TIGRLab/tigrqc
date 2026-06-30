@@ -13,6 +13,7 @@
                     hx-post="{{ url_for('main.add_project') }}"
                     hx-target="#main-content"
                     hx-swap="innerHTML"
+                    autocomplete="off"
                 >
                     {{ project_form.hidden_tag() }}
 
