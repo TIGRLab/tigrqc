@@ -15,7 +15,7 @@ from functools import wraps
 from typing import TYPE_CHECKING, ParamSpec, TypeVar
 
 from flask import abort, redirect, request, session, url_for
-from flask_login import AnonymousUserMixin, current_user
+from flask_login import AnonymousUserMixin, current_user, login_user
 
 from tigrqc.exceptions import ConfigException, UserException
 from tigrqc.interfaces import UserInterface
@@ -33,7 +33,9 @@ class AnonymousUser(UserInterface, AnonymousUserMixin):
     """
     id = -1
     is_admin = False
-    active_account = True
+    is_active = False
+    is_authenticated = False
+    is_anonymous = True
 
 
 class NoAuthAnonymousUser(UserInterface, AnonymousUserMixin):
@@ -41,7 +43,9 @@ class NoAuthAnonymousUser(UserInterface, AnonymousUserMixin):
     """
     id = -99
     is_admin = True
-    active_account = True
+    is_active = True
+    is_authenticated = True
+    is_anonymous = False
 
 
 def auth_disabled(app: Flask) -> bool:
@@ -124,10 +128,17 @@ def set_anon_user(app: Flask, lm: LoginManager):
     limited access and permissions. If it's disabled the AnonymousUser needs
     global access and max permissions because it's the only user.
     """
-    if auth_disabled(app):
-        lm.anonymous_user = NoAuthAnonymousUser
+    if not auth_disabled(app):
+        lm.anonymous_user = AnonymousUser
         return
-    lm.anonymous_user = AnonymousUser
+
+    lm.anonymous_user = NoAuthAnonymousUser
+
+    @app.before_request
+    def make_session_fresh():
+        """Ensure the pseudo-user is always marked a fresh session.
+        """
+        login_user(NoAuthAnonymousUser(), remember=False)
 
 
 def global_admin_required(func: Callable[P, R]) -> Callable[P, R]:
