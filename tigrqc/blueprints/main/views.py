@@ -20,35 +20,24 @@ else:
     Model = db.Model
 
 
-def _get_projects(
-        projects: list[str] | None = None,
+def _get_records(
+        table: Model,
+        subset: list[str] | None = None,
         sort: bool = False
-) -> Sequence[Project]:
-    """Get projects currently in the database.
+) -> Sequence[Model]:
+    """Get all (or a subset) of records from the given table.
 
     Args:
-        projects: A list of project IDs to retrieve records for. Optional,
-            if omitted all projects will be returned.
-        sort: Whether to sort the output by the ID column.
+        table: The table to pull data from.
+        subset: A list of IDs from the table to restrict results to. Optional,
+            if omitted all records will be returned.
+        sort: Whether to sort the output by the ID column. Default False.
     """
-    statement = select(Project)
-    if projects:
-        statement = statement.where(Project.id.in_(projects))
+    statement = select(table)
+    if subset:
+        statement = statement.where(table.id.in_(subset))
     if sort:
-        statement = statement.order_by(Project.id)
-    return db.session.scalars(statement).all()
-
-
-def _get_sites(sites: list[str] | None = None) -> Sequence[Site]:
-    """Get scan sites currently in the database.
-
-    Args:
-        sites: A list of site IDs to retrieve records for. Optional, if
-            omitted all sites will be returned.
-    """
-    statement = select(Site)
-    if sites:
-        statement = statement.where(Site.id.in_(sites))
+        statement = statement.order_by(table.id)
     return db.session.scalars(statement).all()
 
 
@@ -59,7 +48,7 @@ def _add_project(form: ProjectForm):
         form: A ProjectForm containing project details to add to the database.
     """
     project = Project()
-    chosen_sites = _get_sites(form.sites.data)
+    chosen_sites = _get_records(Site, form.sites.data)
     form.sites.data = {}
     form.populate_obj(project)
     project.sites = {
@@ -89,7 +78,7 @@ def is_duplicate_id(exc: InvalidDataException, table: Model) -> bool:
 def index():
     """The main landing page.
     """
-    projects = _get_projects(sort=True)
+    projects = _get_records(Project, sort=True)
     return render_template('index.html', projects=projects)
 
 
@@ -98,13 +87,13 @@ def add_project():
     """Add a project to the database.
     """
     project_form = ProjectForm()
-    sites = _get_sites()
+    sites = _get_records(Site, sort=True)
 
     # Template doesn't use project_form.sites, but it must still be
     # populated or validation fails when this route receives a post
     project_form.sites.choices = [
         (site.id, site.label)
-        for site in _get_sites()
+        for site in sites
     ]
 
     if project_form.validate_on_submit():
@@ -123,7 +112,7 @@ def add_project():
                 'Invalid project configuration. Please review contents.',
                 'danger'
             ) from e
-        projects = _get_projects()
+        projects = _get_records(Project, sort=True)
         return render_template(
             'partials/_project_list.html', projects=projects
         )
@@ -158,7 +147,7 @@ def add_site():
             ) from e
         # Site has been added, so re-display the original list with
         # the new site in it.
-        sites = _get_sites()
+        sites = _get_records(Site, sort=True)
         return render_template('partials/_select_site.html', sites=sites)
 
     return render_template('partials/_add_site.html', site_form=site_form)
@@ -168,7 +157,7 @@ def add_site():
 def add_site_cancel():
     """Re-render the list of scan sites for the 'add project' form.
     """
-    sites = _get_sites()
+    sites = _get_records(Site, sort=True)
     return render_template('partials/_select_site.html', sites=sites)
 
 
