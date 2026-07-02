@@ -6,7 +6,7 @@ This includes:
 """
 from flask import Blueprint
 
-main_bp = Blueprint('main', __name__)
+main_bp = Blueprint('main', __name__, template_folder='templates')
 
 
 def register_bp(app):
