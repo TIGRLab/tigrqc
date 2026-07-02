@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex">
+    <!-- The side nav -->
+    <div class="collapse collapse-horizontal show bg-body border-end" id="sideNav">
+        <p>General</p>
+        <ul class="nav flex-column">
+            <li class="nav-item">
+                <a class="nav-link active" href="#">
+                    Site
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#">
+                    Scan tags
+                </a>
+            </li>
+        </ul>
+        <p>Other</p>
+        <ul class="nav flex-column">
+            <li class="nav-item">
+                <a class="nav-link" href="#">
+                    REDCap
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#">
+                    XNAT
+                </a>
+            </li>
+        </ul>
+    </div>
+
+    <!-- The body contents -->
+    <div class="flex-fill">
+        <nav class="navbar navbar-light bg-light border-bottom">
+            <a class="btn btn-primary"
+                data-bs-toggle="collapse"
+                href="#sideNav"
+                role="button"
+                aria-expanded="false"
+                aria-controls="sideNav"
+            >
+                Toggle menu
+            </a>
+            <span>{% block page_name%}{% endblock %}</span>
+        </nav>
+        <div class="p-4">
+            {% block settings_body %}{% endblock %}
+        </div>
+    </div>
+</div>
+{% endblock %}
