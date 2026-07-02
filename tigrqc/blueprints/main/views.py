@@ -83,6 +83,7 @@ def index():
 
 
 @main.route('/projects/new', methods=['GET', 'POST'])
+@global_admin_required
 def add_project():
     """Add a project to the database.
     """
@@ -125,6 +126,7 @@ def add_project():
 
 
 @main.route('/sites/add-site', methods=['GET', 'POST'])
+@global_admin_required
 def add_site():
     """Add a new scan site.
     """
@@ -154,6 +156,7 @@ def add_site():
 
 
 @main.route('/sites/add-site/cancel', methods=['GET'])
+@global_admin_required
 def add_site_cancel():
     """Re-render the list of scan sites for the 'add project' form.
     """
