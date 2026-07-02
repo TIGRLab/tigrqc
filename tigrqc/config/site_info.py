@@ -1,13 +1,56 @@
 """Configuration of site-specific information.
 
-These settings do not affect the functionality of the application but will
-be used to personalize the website.
+These settings will be used to personalize the application.
 """
+import logging
 import os
+from pathlib import Path
 
 from tigrqc.exceptions import ConfigException
 
 from .utils import get_pyproject_settings
+
+logger = logging.getLogger(__name__)
+
+
+def get_data_dirs(user_input: str) -> list[Path]:
+    """Checks user provided dirs to ensure they exist and are read/write-able.
+
+    Args:
+        user_input: The user-provided, comma-separated, path list.
+    """
+    valid_paths = []
+    for user_path in user_input.split(':'):
+        path = Path(user_path)
+
+        if not path.exists():
+            try:
+                path.mkdir(exist_ok=True)
+            except OSError:
+                logger.error(
+                    'Path %s does not exist and cannot be made. '
+                    'Path will be ignored.',
+                    user_path
+                )
+                continue
+
+        if not os.access(path, os.R_OK | os.W_OK):
+            logger.error(
+                'Path %s has incorrect permission. It must be '
+                'readable and writable by the application. Path will be '
+                'ignored.',
+                user_path
+            )
+            continue
+
+        valid_paths.append(path)
+
+    return valid_paths
+
+
+# Directories to serve data from. Users will be able to, at a minimum,
+# read the contents of these dirs and every subdir within them.
+DATA_DIRS = get_data_dirs(os.environ.get('TIGRQC_DATA_DIRS', ''))
 
 # The 'brand' for the navbar
 BRAND = os.environ.get('TIGRQC_BRAND', 'TIGRQC')
