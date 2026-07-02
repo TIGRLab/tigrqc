@@ -8,6 +8,14 @@
 
 ## Site Personalization Settings
 
+- `TIGRQC_DATA_DIRS`
+    - **Description:** The directories to serve data from. Should be a comma
+        separated list of directories that will host raw scan data and qc
+        data. Be mindful to keep the directories as limited as possible (i.e.
+        don't just give it the root directory on the server) to avoid
+        unauthorized access / modification of important files.
+    - **Default:** `None`
+
 - `TIGRQC_BRAND`
     - **Description:** The 'brand' to use on the site's top navbar.
     - **Default:** `TIGRQC`
