@@ -103,7 +103,7 @@ def test_user_warned_encryption_disabled_when_no_key_given(caplog, set_env):
     assert 'disabled' in caplog.text
 
 
-def test_ferney_key_is_none_when_no_key_given(set_env):
+def test_fernet_key_is_none_when_no_key_given(set_env):
     """The app should receive FERNET_KEY = None when none has been given.
     """
     set_env(ENV_VARS, {})
