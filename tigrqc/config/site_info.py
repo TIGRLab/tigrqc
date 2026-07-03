@@ -19,9 +19,26 @@ def get_data_dirs(user_input: str) -> list[Path]:
     Args:
         user_input: The user-provided, comma-separated, path list.
     """
+    if not user_input:
+        return []
+
     valid_paths = []
+
     for user_path in user_input.split(':'):
         path = Path(user_path)
+
+        if path.is_file():
+            logger.error('Path %s is a file and will be ignored.', user_path)
+            continue
+
+        if not path.is_absolute():
+            logger.error(
+                'Path %s is relative and will be ignored for safety reasons.',
+                user_path
+            )
+            continue
+
+        path = path.resolve()
 
         if not path.exists():
             try:
@@ -45,7 +62,7 @@ def get_data_dirs(user_input: str) -> list[Path]:
 
         valid_paths.append(path)
 
-    return valid_paths
+    return list(set(valid_paths))
 
 
 # Directories to serve data from. Users will be able to, at a minimum,
