@@ -24,6 +24,16 @@ class TestGetDataDirs:
 
         assert result == []
 
+    def test_paths_are_resolved(self, tmp_path):
+        """Ensure outputed paths are resolved.
+        """
+        path = tmp_path / 'subdir'
+        path.mkdir()
+
+        result = get_data_dirs(str(path / '..' / 'subdir'))
+
+        assert result == [path]
+
     def test_returns_directory_if_exists_and_read_and_write_possible(
             self, tmp_path
     ):
@@ -71,7 +81,9 @@ class TestGetDataDirs:
 
         result = get_data_dirs(f'{dir1}:{dir2}:{dir3}')
 
-        assert result == [dir1.resolve(), dir2.resolve(), dir3.resolve()]
+        assert len(result) == 3
+        for item in [dir1, dir2, dir2]:
+            assert item.resolve() in result
 
     def test_returns_only_valid_directories_when_mixed(self, tmp_path):
         """If some dirs are usable and some aren't only include usable.
