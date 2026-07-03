@@ -9,11 +9,15 @@
 ## Site Personalization Settings
 
 - `TIGRQC_DATA_DIRS`
-    - **Description:** The directories to serve data from. Should be a comma
-        separated list of directories that will host raw scan data and qc
+    - **Description:** The directories to serve data from. Should be a colon
+        separated list of directories that will host scan data and QC
         data. Be mindful to keep the directories as limited as possible (i.e.
         don't just give it the root directory on the server) to avoid
-        unauthorized access / modification of important files.
+        unauthorized access / modification of important files. Also, for
+        security reasons relative paths are completely ignored. Note that if
+        the application is running behind a webserver (e.g. nginx) the
+        webserver must be authorized to serve from these directories also
+        or files will not be accessible to users.
     - **Default:** `None`
 
 - `TIGRQC_BRAND`
