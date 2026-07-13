@@ -242,7 +242,7 @@ def list_data_subdirs():
 
     subdirs = {
         item.name: str(item)
-        for item in root_path.iterdir()
+        for item in full_path.iterdir()
         if item.is_dir() and is_safe_path(item)
     }
 
