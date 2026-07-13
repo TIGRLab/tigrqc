@@ -222,8 +222,8 @@ def delete_project(project_id: str = ''):
 def list_data_dirs():
     """Return the configured data directories.
     """
-    result = [str(item) for item in current_app.config['DATA_DIRS']]
-    return jsonify(result)
+    result = {str(item): str(item) for item in current_app.config['DATA_DIRS']}
+    return render_template('partials/_dir_list.html', items=result)
 
 
 @main.route('/data/contents/list')
@@ -238,7 +238,11 @@ def list_data_subdirs():
     Raises 403 if the given directory is not within the whitelisted DATA_DIRS.
     """
     full_path = Path(request.args.get('path')).resolve()
-    root_path = _find_root(full_path)
+
+    # print(f'Received path: {data_path}')
+    print(f'Path object: {full_path}')
+    # Raises 403 if no valid whitelisted directory root can be found
+    _find_root(full_path)
 
     subdirs = {
         item.name: str(item)
@@ -246,4 +250,18 @@ def list_data_subdirs():
         if item.is_dir() and is_safe_path(item)
     }
 
-    return jsonify(subdirs)
+    return render_template('partials/_dir_list.html', items=subdirs)
+
+
+@main.route('/file_browser')
+def file_browser():
+    result = {str(item): str(item) for item in current_app.config['DATA_DIRS']}
+    return render_template('partials/_choose_dir.html', items=result)
+
+
+@main.route('/select/dir', methods=['POST'])
+def select_path():
+    selected = request.args.get('path')
+    print(request.args)
+    print(f'This path was chosen: {selected}')
+    return redirect(url_for('main.index'))
