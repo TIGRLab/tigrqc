@@ -1,9 +1,11 @@
 """Core application views (project listing, creation, etc.)
 """
 from collections.abc import Sequence
+from pathlib import Path
 from typing import TYPE_CHECKING
 
-from flask import flash, redirect, render_template, url_for
+from flask import (abort, current_app, flash, jsonify, redirect,
+                   render_template, request, url_for)
 from flask_login import fresh_login_required
 from sqlalchemy import select
 
@@ -73,8 +75,29 @@ def is_duplicate_id(exc: InvalidDataException, table: Model) -> bool:
     )
 
 
+def _find_root(given_path: str | Path) -> Path:
+    """Find the whitelisted dir that contains the user path or raise 403 code.
+    """
+    user_path = Path(given_path).resolve()
+
+    for root in current_app.config['DATA_DIRS']:
+        if user_path.is_relative_to(root):
+            return root
+
+    abort(403, 'Invalid path given')
+
+
+def is_safe_path(given_path: str | Path) -> bool:
+    """Check if a given path is within a whitelisted DATA_DIR directory.
+    """
+    given_path = Path(given_path).resolve()
+    return any(
+        given_path.is_relative_to(root)
+        for root in current_app.config['DATA_DIRS']
+    )
+
+
 @main.route('/')
-@main.route('/index')
 def index():
     """The main landing page.
     """
@@ -192,3 +215,35 @@ def delete_project(project_id: str = ''):
     project.delete()
     flash(f'{project.id} successfully deleted.', 'success')
     return redirect(url_for('main.index'))
+
+
+@main.route('/data/contents')
+@global_admin_required
+def list_data_dirs():
+    """Return the configured data directories.
+    """
+    result = [str(item) for item in current_app.config['DATA_DIRS']]
+    return jsonify(result)
+
+
+@main.route('/data/contents/list')
+@global_admin_required
+def list_data_subdirs():
+    """Return sub-directories of a whitelisted directory or raise 403.
+
+    This will return a mapping of subdir folder names to their full paths for
+    every subdir contained within a whitelisted directory (or any of its
+    descendents).
+
+    Raises 403 if the given directory is not within the whitelisted DATA_DIRS.
+    """
+    full_path = Path(request.args.get('path')).resolve()
+    root_path = _find_root(full_path)
+
+    subdirs = {
+        item.name: str(item)
+        for item in root_path.iterdir()
+        if item.is_dir() and is_safe_path(item)
+    }
+
+    return jsonify(subdirs)
