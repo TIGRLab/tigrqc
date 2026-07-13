@@ -8,6 +8,7 @@ from .__about__ import __copyright__, __version__
 from .access import require_login_globally
 from .context_processors import register_context_processors
 from .extensions import init_extensions
+from .filters import register_jinja_filters
 from .handlers import register_error_handlers
 from .load_blueprints import load_blueprints
 
@@ -40,5 +41,6 @@ def create_app(config: Mapping[str, Any] | None = None) -> Flask:
     register_context_processors(app)
     require_login_globally(app)
     register_error_handlers(app)
+    register_jinja_filters(app)
 
     return app
