@@ -1,54 +1,76 @@
-<!DOCTYPE html>
-<html lang="en">
-    <head>
-        <!-- jquery 3.7.1 -->
-        <script src="/static/js/jquery-3.7.1.min.js"></script>
+{% extends "base.html" %}
 
-        <!-- jstree 3.2.1 -->
-        <link rel="stylesheet" href="/static/js/jstree-themes/default/style.min.css" />
-        <script src="/static/js/jstree-3.2.1.min.js"></script>
+{% block header_scripts %}
+    <!-- jquery 3.7.1 -->
+    <script src="/static/js/jquery-3.7.1.min.js"></script>
 
-    </head>
-    <body>
-        <h1>The file tree browser should go here:</h1>
+    <!-- jstree 3.3.17 -->
+    <link rel="stylesheet" href="/static/js/jstree-themes/default/style.min.css" />
+    <script src="/static/js/jstree-3.3.17.min.js"></script>
+{% endblock %}
 
-        <div id="file-tree"></div>
+{% block content %}
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-lg-8">
+                <div class="card">
+                    <div class="card-header">
+                        Add QC Dataset
+                    </div>
+                    <div class="card-body">
+                        <h5 class="card-title">Select a directory:</h5>
+                        <p class="card-text">The chosen directory will serve as an input source.</p>
+                        <div id="file-tree"></div>
 
-        <form id="selected-dir" method="POST" action="{{ url_for('main.add_dataset') }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="text" id="dir-input" placeholder="Type or select data folder" required>
-            <button type="submit" id="dir-submit-btn">Choose dir</button>
-        </form>
+                        <form id="selected-dir" method="POST" action="{{ url_for('main.add_dataset') }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <div class="mb-3 mt-3">
+                                <label for="dir-input" class="form-label">Chosen Directory:</label>
+                                <input type="text" class="form-control" id="dir-input" placeholder="Type path or select data folder" required>
+                            </div>
+                            <button type="submit" id="dir-submit-btn" class="btn btn-primary">Choose dir</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row">
+            <div>
+                Other content outside of card.
+            </div>
+        </div>
+    </div>
 
-        <script>
-            console.log('Running the jstree code')
-            const inputField = document.getElementById('dir-input');
 
-            $('#file-tree').jstree({
-            core: {
-                data: {
-                url: "{{ url_for('main.get_file_tree') }}",
-                data: function (node) {
-                    return { id: node.id };  // '#' on first load, then node.id
-                }
-                },
-                check_callback: true
-            },
-            plugins: [
-                "wholerow",
-                "types"
-            ],
-            types: {
-                default: { icon: "jstree-file" },
-                "jstree-folder": { icon: "jstree-folder" }
+
+    <script>
+        console.log('Running the jstree code')
+        const inputField = document.getElementById('dir-input');
+
+        $('#file-tree').jstree({
+        core: {
+            data: {
+            url: "{{ url_for('main.get_file_tree') }}",
+            data: function (node) {
+                return { id: node.id };  // '#' on first load, then node.id
             }
-            });
+            },
+            check_callback: true
+        },
+        plugins: [
+            "wholerow",
+            "types"
+        ],
+        types: {
+            default: { icon: "jstree-file" },
+            "jstree-folder": { icon: "jstree-folder" }
+        }
+        });
 
-            // Optional: handle clicks (e.g. open a file, show details)
-            $('#file-tree').on('select_node.jstree', function (e, data) {
-                console.log('Selected:', data.node.id, data.node.text);
-                inputField.value = data.node.id;
-            });
-        </script>
-    </body>
-</html>
+        // Optional: handle clicks (e.g. open a file, show details)
+        $('#file-tree').on('select_node.jstree', function (e, data) {
+            console.log('Selected:', data.node.id, data.node.text);
+            inputField.value = data.node.id;
+        });
+    </script>
+{% endblock %}
