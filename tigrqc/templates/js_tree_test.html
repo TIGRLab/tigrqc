@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <script src="https://code.jquery.com/jquery-3.7.1.min.js" integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jstree/3.2.1/jstree.min.js"></script>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jstree/3.2.1/themes/default/style.min.css" />
+    </head>
+    <body>
+        <h1>The file tree browser should go here:</h1>
+
+        <div id="file-tree"></div>
+
+        <form id="selected-dir" method="POST" action="{{ url_for('main.add_dataset') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="text" id="dir-input" placeholder="Type or select data folder" required>
+            <button type="submit" id="dir-submit-btn">Choose dir</button>
+        </form>
+
+        <script>
+            console.log('Running the jstree code')
+            const inputField = document.getElementById('dir-input');
+
+            $('#file-tree').jstree({
+            core: {
+                data: {
+                url: "{{ url_for('main.get_file_tree') }}",
+                data: function (node) {
+                    return { id: node.id };  // '#' on first load, then node.id
+                }
+                },
+                check_callback: true
+            },
+            plugins: [
+                "wholerow",
+                "types"
+            ],
+            types: {
+                default: { icon: "jstree-file" },
+                "jstree-folder": { icon: "jstree-folder" }
+            }
+            });
+
+            // Optional: handle clicks (e.g. open a file, show details)
+            $('#file-tree').on('select_node.jstree', function (e, data) {
+                console.log('Selected:', data.node.id, data.node.text);
+                inputField.value = data.node.id;
+            });
+        </script>
+    </body>
+</html>
