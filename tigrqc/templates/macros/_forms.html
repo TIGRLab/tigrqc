@@ -31,20 +31,23 @@
             {{ field.label(class="form-check-label") }}
         </div>
     {% elif field.type == "RadioField" %}
-        {{ field.label(class="form-label") }}
-
-        {% for option in field %}
-            <div class="form-check {{ 'form-check-inline' if inline else ''}}">
-                {{ option(class="form-check-input" + (" is-invalid" if field.errors else "")) }}
-                {{ option.label(class="form-check-label") }}
-            </div>
-        {% endfor %}
+        <fieldset class="border rounded-3 p-3 mb-3">
+            <legend class="form-label fs-6 fw-semibold">
+                {{ field.label.text }}
+            </legend>
+            {% for option in field %}
+                <div class="form-check {{ 'form-check-inline' if inline else ''}}">
+                    {{ option(class="form-check-input" + (" is-invalid" if field.errors else "")) }}
+                    {{ option.label(class="form-check-label") }}
+                </div>
+            {% endfor %}
+        </fieldset>
     {% elif field.type == "RangeField" %}
         {{ field.label(class="form-label") }}
         {{ field(class="form-range" + (" is-invalid" if field.errors else "")) }}
     {% else %}
         {{ field.label(class="form-label") }}
-        {{ field(class="form-control" + (" is-invalid" if field.errors else "")) }}
+        {{ field(class="form-control mb-3" + (" is-invalid" if field.errors else "")) }}
     {% endif %}
 
     {% for error in field.errors %}
