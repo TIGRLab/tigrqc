@@ -1,8 +1,8 @@
 """Forms for the main views in the application.
 """
 from flask_wtf import FlaskForm
-from wtforms import (BooleanField, SelectMultipleField, StringField,
-                     TextAreaField)
+from wtforms import (BooleanField, SelectField, SelectMultipleField,
+                     StringField, TextAreaField)
 from wtforms.validators import DataRequired, Length, Regexp
 
 from tigrqc.models import Project, Site
@@ -94,4 +94,40 @@ class SiteForm(FlaskForm):
         render_kw={
             'title': 'An extended name and/or description for the scan site.'
         }
+    )
+
+
+class DataFolderForm(FlaskForm):
+    """Form to add a new data input source from the file system.
+    """
+    data_path = StringField(
+        'Source Folder',
+        [
+            # Max length of a path on Linux
+            Length(max=4096),
+            DataRequired(),
+        ],
+        render_kw={
+            'maxlength': 4096,
+            'title': 'Select a directory to load data from.',
+            'placeholder': 'Type path or select from file tree.',
+        },
+    )
+    name_convention = SelectField(
+        'Naming Convention',
+        choices=[
+            ('bids', 'BIDS'),
+            ('datman', 'Datman'),
+            ('kcni', 'KCNI'),
+        ],
+        default='bids',
+    )
+    data_type = SelectField(
+        'Dataset Type',
+        choices=[
+            ('raw', 'Raw data (e.g. nii)'),
+            ('qc', 'Default QC metrics'),
+            ('pipeline', 'Pipeline QC metrics'),
+        ],
+        default='raw',
     )
