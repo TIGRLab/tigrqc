@@ -1,7 +1,7 @@
 """Forms for the main views in the application.
 """
 from flask_wtf import FlaskForm
-from wtforms import (BooleanField, SelectField, SelectMultipleField,
+from wtforms import (BooleanField, RadioField, SelectMultipleField,
                      StringField, TextAreaField)
 from wtforms.validators import DataRequired, Length, Regexp
 
@@ -101,7 +101,7 @@ class DataFolderForm(FlaskForm):
     """Form to add a new data input source from the file system.
     """
     data_path = StringField(
-        'Source Folder',
+        'Choose directory',
         [
             # Max length of a path on Linux
             Length(max=4096),
@@ -111,9 +111,10 @@ class DataFolderForm(FlaskForm):
             'maxlength': 4096,
             'title': 'Select a directory to load data from.',
             'placeholder': 'Type path or select from file tree.',
+            'id': 'dir-input',
         },
     )
-    name_convention = SelectField(
+    name_convention = RadioField(
         'Naming Convention',
         choices=[
             ('bids', 'BIDS'),
@@ -122,7 +123,7 @@ class DataFolderForm(FlaskForm):
         ],
         default='bids',
     )
-    data_type = SelectField(
+    data_type = RadioField(
         'Dataset Type',
         choices=[
             ('raw', 'Raw data (e.g. nii)'),
