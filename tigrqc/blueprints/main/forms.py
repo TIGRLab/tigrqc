@@ -1,11 +1,13 @@
 """Forms for the main views in the application.
 """
 from flask_wtf import FlaskForm
+from sqlalchemy import select
 from wtforms import (BooleanField, RadioField, SelectMultipleField,
                      StringField, TextAreaField)
 from wtforms.validators import DataRequired, Length, Regexp
 
-from tigrqc.models import Project, Site
+from tigrqc.extensions import db
+from tigrqc.models import DatasetType, NameScheme, Project, Site
 
 
 class ProjectForm(FlaskForm):
@@ -116,19 +118,40 @@ class DataFolderForm(FlaskForm):
     )
     name_convention = RadioField(
         'Naming Convention',
-        choices=[
-            ('bids', 'BIDS'),
-            ('datman', 'Datman'),
-            ('kcni', 'KCNI'),
+        [
+            DataRequired()
         ],
-        default='bids',
+        render_kw={
+            'title': 'The naming convention used for these files.'
+        },
     )
     data_type = RadioField(
         'Dataset Type',
-        choices=[
-            ('raw', 'Raw data (e.g. nii)'),
-            ('qc', 'Default QC metrics'),
-            ('pipeline', 'Pipeline QC metrics'),
+        [
+            DataRequired()
         ],
-        default='raw',
+        render_kw={
+            'title': 'Determines how these files will be used and displayed.'
+        },
     )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # Set choices in form based on database contents
+        name_types = db.session.scalars(
+            select(NameScheme).order_by(NameScheme.id)
+        ).all()
+        data_types = db.session.scalars(
+            select(DatasetType).order_by(DatasetType.id)
+        ).all()
+
+        self.name_convention.choices = [
+            (nc.id, nc.description)
+            for nc in name_types
+        ]
+
+        self.data_type.choices = [
+            (dt.id, dt.description)
+            for dt in data_types
+        ]
