@@ -8,6 +8,7 @@ from wtforms.validators import DataRequired, Length, Regexp
 
 from tigrqc.extensions import db
 from tigrqc.models import DatasetType, NameScheme, Project, Site
+from tigrqc.validators import SafePath
 
 
 class ProjectForm(FlaskForm):
@@ -108,6 +109,7 @@ class DataFolderForm(FlaskForm):
             # Max length of a path on Linux
             Length(max=4096),
             DataRequired(),
+            SafePath(),
         ],
         render_kw={
             'maxlength': 4096,

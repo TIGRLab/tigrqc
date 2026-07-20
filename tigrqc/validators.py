@@ -4,9 +4,11 @@ This may include anything from plain functions for use in views to validator
 classes for use by Flask-WTForm fields.
 """
 import os
+from dataclasses import dataclass
 from pathlib import Path
 
 from flask import current_app
+from wtforms.validators import ValidationError
 
 from .exceptions import UserException
 
@@ -64,3 +66,36 @@ def validate_path(
         raise UserException('Provided path is not writable.')
 
     return user_path
+
+
+@dataclass(slots=True)
+class SafePath:
+    """A path validator for WTForms.
+
+    Can validate that the path given:
+        1) Is within a whitelisted directory
+        2) Exists
+        3) Is readable or writeable
+    """
+    whitelist_dirs: list[Path | str] | None = None
+    must_exist: bool = True
+    must_read: bool = True
+    must_write: bool = False
+
+    def __call__(self, _, field):
+        given_path = field.data
+
+        if not given_path:
+            # Let other validators handle non-existent input for the field.
+            return
+
+        try:
+            validate_path(
+                given_path,
+                allowed_dirs=self.whitelist_dirs,
+                must_exist=self.must_exist,
+                require_read=self.must_read,
+                require_write=self.must_write,
+            )
+        except UserException as e:
+            raise ValidationError(str(e)) from e
