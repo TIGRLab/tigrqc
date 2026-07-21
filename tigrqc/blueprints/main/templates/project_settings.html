@@ -2,17 +2,79 @@
 
 {% block content %}
 
-<button
-    type="button"
-    class="btn btn-danger"
-    data-bs-toggle="modal"
-    data-bs-target="#deleteDangerModal"
-    data-item-name="{{ project.id }}"
-    data-delete-url="{{ url_for('main.delete_project', project_id=project.id) }}"
->
-    <i class="bi bi-trash"></i> Delete Project
-</button>
+<div class="container">
+    <button
+        type="button"
+        class="btn btn-danger"
+        data-bs-toggle="modal"
+        data-bs-target="#deleteDangerModal"
+        data-item-name="{{ project.id }}"
+        data-delete-url="{{ url_for('main.delete_project', project_id=project.id) }}"
+    >
+        <i class="bi bi-trash"></i> Delete Project
+    </button>
 
-{% include 'partials/_delete_danger_modal.html' %}
+    {% include 'partials/_delete_danger_modal.html' %}
+
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-lg-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h1 class="card-title">Project ID</h1>
+                        <h3 class="card-subtitle mb-2 text-body-secondary">
+                            The long for name of the project will go here,
+                            if it exists.
+                        </h3>
+                        <p class="card-text">
+                            Long form description must go here,if it exists.
+                            Need a 'show more' trunaction if it's long also.
+
+                            Other things like:
+                                - status (open/closed).
+                                - Creation date
+                                - The PI
+                                - Any non-user external contacts
+                                - Total number of participants.
+                                - Total number of phantoms.
+                                - Num not yet qc'd.
+                                - Num of outstanding issues (github/gitlab or just
+                                    unresolved import/name stuff.)
+                                - Date of last raw data added
+                                    (Maybe this should be per dataset also / instead)
+                                - Links to config files that have been uploaded
+                                    (i.e. for bids, datman, etc.)
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-4">
+                Datasets go here. Need a proper header for the section.
+
+                One card per dataset that's been added. A badge (local / xnat / redcap)
+                next to the nickname.
+                -> Compact view with: Num subs, name convention, date of last sub,
+                    and a button to view / edit each.
+            </div>
+            <div class="col-lg-4">
+                Users go here. Need a proper header for the section.
+
+                Stacked cards. One per permission tier, ordered from most
+                permission to least with color coding to indicate danger of using
+                each level.
+
+                -> Top level name (Admin, Editor, Viewer) should include shorthand
+                list of permissions (e.g. CREATE/DELETE/WRITE/READ for admin),
+                plus a count of the number of users.
+                -> Consider list-group for users, just first + last name
+                    with a button to view their management page.
+                -> Maybe need to add an 'external contacts' section or something
+                    to list like.. RAs to contact, PIs, etc. who don't use the
+                    dashboard but have contact info and roles.
+            </div>
+        </div>
+    </div>
+</div>
+
 
 {% endblock %}
