@@ -2,79 +2,69 @@
 
 {% block content %}
 
-<div class="container">
-    <button
-        type="button"
-        class="btn btn-danger"
-        data-bs-toggle="modal"
-        data-bs-target="#deleteDangerModal"
-        data-item-name="{{ project.id }}"
-        data-delete-url="{{ url_for('main.delete_project', project_id=project.id) }}"
-    >
-        <i class="bi bi-trash"></i> Delete Project
-    </button>
+<div class="container flex-grow-1 d-flex flex-column mb-3">
+    <div class="d-flex justify-content-between align-items-center mb-3 mt-3">
+        <a
+            type="button"
+            class="btn btn-primary"
+            href="{{ url_for('main.project_home', project_id=project.id) }}"
+        >
+            Back
+        </a>
 
-    {% include 'partials/_delete_danger_modal.html' %}
+        <div class="d-flex gap-2">
+            <button
+                type="button"
+                class="btn btn-danger"
+                data-bs-toggle="modal"
+                data-bs-target="#deleteDangerModal"
+                data-item-name="{{ project.id }}"
+                data-delete-url="{{ url_for('main.delete_project', project_id=project.id) }}"
+            >
+                <i class="bi bi-trash"></i> Delete Project
+            </button>
+        </div>
+    </div>
 
-    <div class="container-fluid">
-        <div class="row">
-            <div class="col-lg-4">
-                <div class="card">
-                    <div class="card-body">
-                        <h1 class="card-title">Project ID</h1>
-                        <h3 class="card-subtitle mb-2 text-body-secondary">
-                            The long for name of the project will go here,
-                            if it exists.
-                        </h3>
-                        <p class="card-text">
-                            Long form description must go here,if it exists.
-                            Need a 'show more' trunaction if it's long also.
+    <div class="container-fluid flex-grow-1 d-flex flex-column">
+        <div class="row flex-grow-1">
+            <div class="col-lg-6">
+                <h1 class="display-2">{{ project.id }}</h1>
+                {% if project.name %}
+                    <p class="lead">
+                        {{ project.name }}
+                    </p>
+                {% endif %}
+                <dl class="row mt-5">
+                    {% if project.description %}
+                        <dt class="col-sm-3">
+                            Description
+                        </dt>
+                        <dd class="col-sm-9">
+                            {{ project.description }}
+                        </dd>
+                    {% endif %}
 
-                            Other things like:
-                                - status (open/closed).
-                                - Creation date
-                                - The PI
-                                - Any non-user external contacts
-                                - Total number of participants.
-                                - Total number of phantoms.
-                                - Num not yet qc'd.
-                                - Num of outstanding issues (github/gitlab or just
-                                    unresolved import/name stuff.)
-                                - Date of last raw data added
-                                    (Maybe this should be per dataset also / instead)
-                                - Links to config files that have been uploaded
-                                    (i.e. for bids, datman, etc.)
-                        </p>
-                    </div>
+                    {# PI info, etc. goes here later. #}
+                </dl>
+            </div>
+            <div class="col-lg-3 border-start d-flex flex-column">
+                <h3 class="text-center">Datasets</h3>
+                <div class="flex-grow-1 d-flex justify-content-center align-items-center text-muted">
+                    No datasets yet.
                 </div>
             </div>
-            <div class="col-lg-4">
-                Datasets go here. Need a proper header for the section.
-
-                One card per dataset that's been added. A badge (local / xnat / redcap)
-                next to the nickname.
-                -> Compact view with: Num subs, name convention, date of last sub,
-                    and a button to view / edit each.
-            </div>
-            <div class="col-lg-4">
-                Users go here. Need a proper header for the section.
-
-                Stacked cards. One per permission tier, ordered from most
-                permission to least with color coding to indicate danger of using
-                each level.
-
-                -> Top level name (Admin, Editor, Viewer) should include shorthand
-                list of permissions (e.g. CREATE/DELETE/WRITE/READ for admin),
-                plus a count of the number of users.
-                -> Consider list-group for users, just first + last name
-                    with a button to view their management page.
-                -> Maybe need to add an 'external contacts' section or something
-                    to list like.. RAs to contact, PIs, etc. who don't use the
-                    dashboard but have contact info and roles.
+            <div class="col-lg-3 border-start d-flex flex-column">
+                <h3 class="text-center">Users</h3>
+                <div class="flex-grow-1 d-flex justify-content-center align-items-center text-muted">
+                    No users with access yet.
+                </div>
             </div>
         </div>
     </div>
 </div>
 
+{# Used by the 'delete project' button #}
+{% include 'partials/_delete_danger_modal.html' %}
 
 {% endblock %}
