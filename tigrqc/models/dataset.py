@@ -26,7 +26,7 @@ class Dataset(TableMixin, Model):
         id: The unique ID for this data collection.
         path: The path to the files on the server's file system.
     """
-    __tablename__ = 'dataset'
+    __tablename__ = 'datasets'
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     path: Mapped[Path] = mapped_column(PathType, nullable=False)
@@ -43,7 +43,7 @@ class Dataset(TableMixin, Model):
 class NameScheme(TableMixin, Model):
     """Lists valid naming conventions that data collections can use.
     """
-    __tablename__ = 'name_scheme'
+    __tablename__ = 'name_schemes'
     id: Mapped[str] = mapped_column(String(12), primary_key=True)
     description: Mapped[str] = mapped_column(String(60))
 
@@ -52,6 +52,6 @@ class NameScheme(TableMixin, Model):
 class DatasetType(TableMixin, Model):
     """The category a dataset falls into. Changes how it's displayed, etc.
     """
-    __tablename__ = 'dataset_type'
+    __tablename__ = 'dataset_types'
     id: Mapped[str] = mapped_column(String(12), primary_key=True)
     description: Mapped[str] = mapped_column(String(60))
