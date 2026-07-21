@@ -16,7 +16,7 @@ from tigrqc.models.types import PathType
 if TYPE_CHECKING:
     from flask_sqlalchemy.model import Model
 
-    from tigrqc.models import Project
+    from tigrqc.models.project import Project
 else:
     Model = db.Model
 
@@ -36,10 +36,10 @@ class Dataset(TableMixin, Model):
     )
     path: Mapped[Path] = mapped_column(PathType, nullable=False)
     name_type: Mapped[str] = mapped_column(
-        String(12), ForeignKey('name_scheme.id'), nullable=False
+        String(12), ForeignKey('name_schemes.id'), nullable=False
     )
     data_type: Mapped[str] = mapped_column(
-        String(12), ForeignKey('dataset_type.id'), nullable=False
+        String(12), ForeignKey('dataset_types.id'), nullable=False
     )
 
     project: Mapped['Project'] = relationship(
