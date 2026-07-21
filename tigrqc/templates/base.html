@@ -17,7 +17,7 @@
 
         {% block header_scripts %}{% endblock %}
     </head>
-    <body>
+    <body class="d-flex flex-column min-vh-100">
         <header>
             <div id="alerts">
                 {% include 'partials/_flash.html' %}
@@ -47,7 +47,7 @@
             </nav>
         </header>
 
-        <main>
+        <main class="flex-grow-1 d-flex flex-column">
             {% block content %}{% endblock %}
         </main>
 
