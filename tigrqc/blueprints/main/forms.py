@@ -103,7 +103,7 @@ class SiteForm(FlaskForm):
 class DataFolderForm(FlaskForm):
     """Form to add a new data input source from the file system.
     """
-    data_path = StringField(
+    path = StringField(
         'Choose directory',
         [
             # Max length of a path on Linux
@@ -118,7 +118,7 @@ class DataFolderForm(FlaskForm):
             'id': 'dir-input',
         },
     )
-    name_convention = RadioField(
+    name_type = RadioField(
         'Naming Convention',
         [
             DataRequired()
@@ -148,7 +148,7 @@ class DataFolderForm(FlaskForm):
             select(DatasetType).order_by(DatasetType.id)
         ).all()
 
-        self.name_convention.choices = [
+        self.name_type.choices = [
             (nc.id, nc.description)
             for nc in name_types
         ]
