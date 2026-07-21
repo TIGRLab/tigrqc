@@ -14,6 +14,8 @@ from tigrqc.models.types import PathType
 
 if TYPE_CHECKING:
     from flask_sqlalchemy.model import Model
+
+    from tigrqc.models.dataset import Dataset
 else:
     Model = db.Model
 
@@ -51,6 +53,9 @@ class Project(TableMixin, Model):
         back_populates='project',
         collection_class=attribute_keyed_dict('site_id'),
         cascade='all, delete',
+    )
+    datasets: Mapped['Dataset'] = relationship(
+        'Dataset', back_populates='project'
     )
 
     def __repr__(self) -> str:
@@ -117,6 +122,8 @@ class Site(TableMixin, Model):
 
     @property
     def label(self) -> str:
+        """Provide a meaningful label for a site instance.
+        """
         return f'{self.id} - {self.name}' if self.name else self.id
 
     def __repr__(self):
