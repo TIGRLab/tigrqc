@@ -11,11 +11,11 @@ from sqlalchemy import select
 
 from tigrqc.access import global_admin_required
 from tigrqc.exceptions import InvalidDataException, UserException
-from tigrqc.models import Project, ProjectSite, Site, db
+from tigrqc.models import Dataset, Project, ProjectSite, Site, db
 from tigrqc.filters import make_id
 
 from . import main_bp as main
-from .forms import ProjectForm, SiteForm
+from .forms import DataFolderForm, ProjectForm, SiteForm
 
 if TYPE_CHECKING:
     from flask_sqlalchemy.model import Model
@@ -196,14 +196,33 @@ def project_home(project_id: str = ''):
     return render_template('project.html', project=project)
 
 
-@main.route('/projects/<string:project_id>/settings')
+@main.route('/projects/<string:project_id>/settings', methods=['GET', 'POST'])
 @global_admin_required
 @fresh_login_required
 def project_settings(project_id: str = ''):
     """View or modify a project's settings.
     """
     project = Project.query.get_or_404(project_id)
-    return render_template('project_settings.html', project=project)
+    dataset_form = DataFolderForm()
+    datasets = db.session.scalars(
+        select(Dataset).where(Dataset.project_id == project.id)
+    ).all()
+
+    if dataset_form.validate_on_submit():
+        dataset = Dataset()
+        dataset.project_id = project.id
+        dataset_form.populate_obj(dataset)
+        dataset.save()
+        datasets.append(dataset)
+        return render_template(
+            'project_settings.html', project=project,
+            dataset_form=dataset_form, datasets=datasets
+        )
+
+    return render_template(
+        'project_settings.html', project=project, dataset_form=dataset_form,
+        datasets=datasets
+    )
 
 
 @main.route('/projects/<string:project_id>/delete', methods=['POST'])
@@ -218,76 +237,10 @@ def delete_project(project_id: str = ''):
     return redirect(url_for('main.index'))
 
 
-# @main.route('/data/contents')
-# @global_admin_required
-# def list_data_dirs():
-#     """Return the configured data directories.
-#     """
-#     result = {str(item): str(item) for item in current_app.config['DATA_DIRS']}
-#     return render_template('partials/_dir_list.html', items=result)
-
-
-# @main.route('/data/contents/list')
-# @global_admin_required
-# def list_data_subdirs():
-#     """Return sub-directories of a whitelisted directory or raise 403.
-
-#     This will return a mapping of subdir folder names to their full paths for
-#     every subdir contained within a whitelisted directory (or any of its
-#     descendents).
-
-#     Raises 403 if the given directory is not within the whitelisted DATA_DIRS.
-#     """
-#     full_path = Path(request.args.get('path')).resolve()
-
-#     # print(f'Received path: {data_path}')
-#     print(f'Path object: {full_path}')
-#     # Raises 403 if no valid whitelisted directory root can be found
-#     _find_root(full_path)
-
-#     subdirs = {
-#         item.name: str(item)
-#         for item in full_path.iterdir()
-#         if item.is_dir() and is_safe_path(item)
-#     }
-
-#     return render_template('partials/_dir_list.html', items=subdirs)
-
-
-# @main.route('/file_browser')
-# def file_browser():
-#     result = {str(item): str(item) for item in current_app.config['DATA_DIRS']}
-#     return render_template('partials/_choose_dir.html', items=result)
-
-
-# @main.route('/select/dir', methods=['POST'])
-# def select_path():
-#     selected = request.args.get('path')
-#     ### Must verify that submitted path is within accepted roots
-#     ### and that it exists (or make it? Make intermediate dirs too)
-#     ### Allow template to add a folder at any level
-#     ### Probably also need to control for bad folder names
-#     print(request.args)
-#     print(f'This path was chosen: {selected}')
-#     return redirect(url_for('main.index'))
-
-
-# @main.route('/test/jstree')
-# def test_jstree():
-#     items = []
-#     for item in current_app.config['DATA_DIRS']:
-#         items.append({
-#             'id': str(item),
-#             'parent': '#',
-#             'text': item.name,
-#             'children': True if _get_children(item) else False,
-#             'icon': 'jstree-folder'
-#         })
-#     return render_template('js_tree_test.html', root_dirs=items)
-
 @main.route('/test/jstree')
 def test_jstree():
-    return render_template('js_tree_test.html')
+    form = DataFolderForm()
+    return render_template('js_tree_test.html', dataset_form=form)
 
 
 @main.route('/api/file')
@@ -304,25 +257,10 @@ def get_file_tree():
                 'parent': '#',
                 'text': str(item),
                 'children': True if _get_children(item) else False,
-                'icon': 'jstree-folder'
             })
         return jsonify(root_nodes)
 
     print(f'This is contents of "node": {node}')
-
-    # Top level: show each whitelisted root as a jstree node
-    # if node == "#":
-    #     return jsonify([
-    #         {"id": f"{rid}:", "text": rid, "children": True, "icon": "jstree-folder"}
-    #         for rid in WHITELIST
-    #     ])
-
-    # root_id, _, rel = node.partition(":")
-    # root = Path(WHITELIST[root_id]).resolve()
-    # target = resolve_safe_path(root_id, rel)
-
-    # if not target.is_dir():
-    #     abort(404)
 
     entries = []
     for item in _get_children(Path(node).resolve()):
@@ -331,22 +269,7 @@ def get_file_tree():
             'parent': node,
             'text': str(item.name),
             'children': True if _get_children(item) else False,
-            'icon': 'jstree-folder'
         })
-    # try:
-    #     with os.scandir(target) as it:
-    #         for entry in sorted(it, key=lambda e: (not e.is_dir(), e.name.lower())):
-    #             if entry.name.startswith("."):
-    #                 continue  # skip hidden files, adjust as needed
-    #             child_path = Path(entry.path).resolve()
-    #             entries.append({
-    #                 "id": node_id(root_id, child_path, root),
-    #                 "text": entry.name,
-    #                 "children": entry.is_dir(),  # jstree lazy-loads if True
-    #                 "icon": "jstree-folder" if entry.is_dir() else "jstree-file",
-    #             })
-    # except PermissionError:
-    #     abort(403)
 
     print(entries)
 
@@ -360,52 +283,3 @@ def _get_children(path):
         if item.is_dir() and is_safe_path(item)
     ]
     return subdirs
-
-@main.route('/dataset/add', methods=["POST"])
-def add_dataset():
-    dataset_root = request.args.get('path')
-    # add check for whitelisting here
-    print(f'Chosen dataset location is {dataset_root}')
-    return render_template('js_tree_test.html')
-
-
-
-@main.route('/test/wunderbaum')
-def test_wunderbaum():
-    return render_template('fancytree_test.html')
-
-
-@main.route('/api/wunder')
-def get_new_tree():
-    node = request.args.get('id', '#')
-
-    print(f'Got request for node {node}')
-
-    if node == '#':
-        root_nodes = []
-        for item in current_app.config['DATA_DIRS']:
-            root_nodes.append({
-                'key': str(item),
-                'parent': '#',
-                'title': str(item),
-                'lazy': True if _get_children(item) else False,
-                'folder': True
-            })
-        return jsonify(root_nodes)
-
-    print(f'This is contents of "node": {node}')
-
-    entries = []
-    for item in _get_children(Path(node).resolve()):
-        entries.append({
-            'key': str(item),
-            'parent': node,
-            'title': str(item.name),
-            'lazy': True if _get_children(item) else False,
-            'folder': True
-        })
-
-    print(entries)
-
-    return jsonify(entries)
-
