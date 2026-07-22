@@ -1,4 +1,14 @@
 {% extends "base.html" %}
+{% from "macros/_forms.html" import render_form %}
+
+{% block header_scripts %}
+    <!-- jquery 3.7.1 -->
+    <script src="/static/js/jquery-3.7.1.min.js"></script>
+
+    <!-- jstree 3.3.17 -->
+    <link rel="stylesheet" href="/static/js/jstree-themes/default/style.min.css" />
+    <script src="/static/js/jstree-3.3.17.min.js"></script>
+{% endblock %}
 
 {% block content %}
 
@@ -50,9 +60,21 @@
             </div>
             <div class="col-lg-3 border-start d-flex flex-column">
                 <h3 class="text-center">Datasets</h3>
-                <div class="flex-grow-1 d-flex justify-content-center align-items-center text-muted">
-                    No datasets yet.
-                </div>
+                {% if not datasets %}
+                    <div class="flex-grow-1 d-flex justify-content-center align-items-center text-muted">
+                        <p>No datasets yet.</p>
+                        <button
+                            type="button"
+                            class="btn btn-primary"
+                            data-bs-toggle="modal"
+                            data-bs-target="#addDatasetModal"
+                        >
+                            Add Dataset
+                        </button>
+                    </div>
+                {% else %}
+                    {% include 'partials/_dataset_list.html' %}
+                {% endif %}
             </div>
             <div class="col-lg-3 border-start d-flex flex-column">
                 <h3 class="text-center">Users</h3>
@@ -66,5 +88,39 @@
 
 {# Used by the 'delete project' button #}
 {% include 'partials/_delete_danger_modal.html' %}
+
+{# Used by the 'add dataset' button #}
+{% include 'partials/_add_dataset_modal.html' %}
+
+<script>
+    console.log('Running the jstree code')
+    const inputField = document.getElementById('dir-input');
+
+    $('#file-tree').jstree({
+    core: {
+        data: {
+        url: "{{ url_for('main.get_file_tree') }}",
+        data: function (node) {
+            return { id: node.id };  // '#' on first load, then node.id
+        }
+        },
+        check_callback: true
+    },
+    plugins: [
+        "wholerow",
+        "types",
+        "sort"
+    ],
+    types: {
+        default: { icon: "jstree-folder" }
+    }
+    });
+
+    // Optional: handle clicks (e.g. open a file, show details)
+    $('#file-tree').on('select_node.jstree', function (e, data) {
+        console.log('Selected:', data.node.id, data.node.text);
+        inputField.value = data.node.id;
+    });
+</script>
 
 {% endblock %}

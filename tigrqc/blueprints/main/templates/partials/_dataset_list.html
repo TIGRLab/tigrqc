@@ -1,0 +1,14 @@
+<button
+    type="button"
+    class="btn btn-primary"
+    data-bs-toggle="modal"
+    data-bs-target="#addDatasetModal"
+>
+    Add Dataset
+</button>
+{% for item in datasets %}
+    <p>
+        {{ item.path }}
+        {{ item.name_type }}
+    </p>
+{% endfor %}
