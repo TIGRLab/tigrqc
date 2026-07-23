@@ -210,9 +210,8 @@ def project_settings(project_id: str = ''):
         dataset.project_id = project.id
         dataset_form.populate_obj(dataset)
         dataset.save()
-        return render_template(
-            'project_settings.html', project=project,
-            dataset_form=dataset_form
+        return redirect(
+            url_for('main.project_settings', project_id=project_id)
         )
 
     return render_template(
