@@ -204,24 +204,19 @@ def project_settings(project_id: str = ''):
     """
     project = Project.query.get_or_404(project_id)
     dataset_form = DataFolderForm()
-    datasets = db.session.scalars(
-        select(Dataset).where(Dataset.project_id == project.id)
-    ).all()
 
     if dataset_form.validate_on_submit():
         dataset = Dataset()
         dataset.project_id = project.id
         dataset_form.populate_obj(dataset)
         dataset.save()
-        datasets.append(dataset)
         return render_template(
             'project_settings.html', project=project,
-            dataset_form=dataset_form, datasets=datasets
+            dataset_form=dataset_form
         )
 
     return render_template(
-        'project_settings.html', project=project, dataset_form=dataset_form,
-        datasets=datasets
+        'project_settings.html', project=project, dataset_form=dataset_form
     )
 
 
