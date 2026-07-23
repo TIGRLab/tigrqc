@@ -196,7 +196,7 @@ def project_home(project_id: str = ''):
     return render_template('project.html', project=project)
 
 
-@main.route('/projects/<string:project_id>/settings', methods=['GET', 'POST'])
+@main.route('/projects/<string:project_id>/settings', methods=['GET'])
 @global_admin_required
 @fresh_login_required
 def project_settings(project_id: str = ''):
@@ -205,18 +205,34 @@ def project_settings(project_id: str = ''):
     project = Project.query.get_or_404(project_id)
     dataset_form = DataFolderForm()
 
-    if dataset_form.validate_on_submit():
-        dataset = Dataset()
-        dataset.project_id = project.id
-        dataset_form.populate_obj(dataset)
-        dataset.save()
-        return redirect(
-            url_for('main.project_settings', project_id=project_id)
-        )
-
     return render_template(
         'project_settings.html', project=project, dataset_form=dataset_form
     )
+
+
+@main.route('/projects/<string:project_id>/add_dataset', methods=['POST'])
+@global_admin_required
+@fresh_login_required
+def add_dataset(project_id: str = ''):
+    """Add a new dataset to a project.
+    """
+    project = Project.query.get_or_404(project_id)
+    form = DataFolderForm()
+
+    if form.validate_on_submit():
+        dataset = Dataset()
+        dataset.project_id = project.id
+        form.populate_obj(dataset)
+        dataset.save()
+        return render_template(
+            'partials/_dataset_list.html', project=project
+        )
+
+    return render_template(
+            'partials/_add_dataset_modal_body.html',
+            project=project,
+            dataset_form=form,
+        ), 422
 
 
 @main.route('/projects/<string:project_id>/delete', methods=['POST'])

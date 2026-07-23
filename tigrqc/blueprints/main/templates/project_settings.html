@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% from "macros/_forms.html" import render_form %}
 
 {% block header_scripts %}
     <!-- jquery 3.7.1 -->
@@ -60,21 +59,23 @@
             </div>
             <div class="col-lg-3 border-start d-flex flex-column">
                 <h3 class="text-center">Datasets</h3>
-                {% if not project.datasets %}
-                    <div class="flex-grow-1 d-flex justify-content-center align-items-center text-muted">
-                        <p>No datasets yet.</p>
-                        <button
-                            type="button"
-                            class="btn btn-primary"
-                            data-bs-toggle="modal"
-                            data-bs-target="#addDatasetModal"
-                        >
-                            Add Dataset
-                        </button>
-                    </div>
-                {% else %}
-                    {% include 'partials/_dataset_list.html' %}
-                {% endif %}
+                <div id="datasetsList">
+                    {% if not project.datasets %}
+                        <div class="flex-grow-1 d-flex justify-content-center align-items-center text-muted">
+                            <p>No datasets yet.</p>
+                            <button
+                                type="button"
+                                class="btn btn-primary"
+                                data-bs-toggle="modal"
+                                data-bs-target="#addDatasetModal"
+                            >
+                                Add Dataset
+                            </button>
+                        </div>
+                    {% else %}
+                        {% include 'partials/_dataset_list.html' %}
+                    {% endif %}
+                </div>
             </div>
             <div class="col-lg-3 border-start d-flex flex-column">
                 <h3 class="text-center">Users</h3>
@@ -93,8 +94,9 @@
 {% include 'partials/_add_dataset_modal.html' %}
 
 <script>
+    /////////////////////////////////////////////
+    // This part implements the 'add dataset' modal's file selection
     console.log('Running the jstree code')
-    const inputField = document.getElementById('dir-input');
 
     $('#file-tree').jstree({
     core: {
@@ -119,7 +121,25 @@
     // Optional: handle clicks (e.g. open a file, show details)
     $('#file-tree').on('select_node.jstree', function (e, data) {
         console.log('Selected:', data.node.id, data.node.text);
-        inputField.value = data.node.id;
+        const inputField = document.getElementById('dir-input');
+        if (inputField) {
+            inputField.value = data.node.id;
+        }
+    });
+
+    ////////////////////////////////////////
+    // This part ensures the modal closes when it's submitted or stays open
+    // if invalid data is submitted.
+    document.body.addEventListener('htmx:afterRequest', (evt) => {
+        if (evt.detail.elt.id === 'addDataset' && evt.detail.successful) {
+            const modalEl = document.getElementById('addDatasetModal');
+            bootstrap.Modal.getInstance(modalEl).hide();
+        }
+    });
+
+    document.getElementById('addDatasetModal').addEventListener('hidden.bs.modal', () => {
+        const form = document.getElementById('addDataset');
+        if (form) form.reset();
     });
 </script>
 
