@@ -9,21 +9,18 @@
             <div class="modal-body">
                 <div id="file-tree"></div>
                 <form
-                    id="selected-dir"
+                    id="addDataset"
                     method="POST"
                     action="{{ url_for('main.project_settings', project_id=project.id) }}"
                     autocomplete="off"
                 >
                     {{ render_form(dataset_form) }}
-                    <button type="submit" id="dir-submit-btn" class="btn btn-primary">
-                        Add dataset
-                    </button>
                 </form>
             </div>
 
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                <button type="button" class="btn btn-primary">Save changes</button>
+                <button type="submit" form="addDataset" class="btn btn-primary">Add Dataset</button>
             </div>
         </div>
     </div>
