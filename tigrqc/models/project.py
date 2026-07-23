@@ -54,7 +54,7 @@ class Project(TableMixin, Model):
         collection_class=attribute_keyed_dict('site_id'),
         cascade='all, delete',
     )
-    datasets: Mapped['Dataset'] = relationship(
+    datasets: Mapped[list['Dataset']] = relationship(
         'Dataset', back_populates='project'
     )
 
