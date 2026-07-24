@@ -1,6 +1,6 @@
 <!-- Form to add a new project to the database -->
 <a class="btn btn-primary" href="{{ url_for('main.index') }}">
-    Back
+    <i class="bi bi-caret-left-fill"></i> Back to Home
 </a>
 <div class="container d-flex justify-content-center mt-5">
     <div class="col-12 col-md-6 col-lg-4">
@@ -52,7 +52,7 @@
                         {% endif %}
                     {% endfor %}
                     <button type="submit" class="btn btn-primary w-100">
-                        Save Project
+                        <i class="bi bi-floppy"></i> Save Project
                     </button>
                 </form>
             </div>
