@@ -32,7 +32,9 @@ class Dataset(TableMixin, Model):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     project_id: Mapped[str] = mapped_column(
-        String(32), ForeignKey('projects.id'), nullable=False
+        String(32),
+        ForeignKey('projects.id', ondelete='CASCADE'),
+        nullable=False
     )
     path: Mapped[Path] = mapped_column(PathType, nullable=False)
     name_type: Mapped[str] = mapped_column(
