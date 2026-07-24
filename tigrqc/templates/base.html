@@ -60,6 +60,20 @@
                     </div>
                 </div>
             </nav>
+
+            <script>
+                /**
+                 *  This is a fix for a focus race condition that occurs with
+                 *  bootstrap when closing modals. Can be removed if later
+                 *  versions fix it natively.
+                **/
+                document.addEventListener('hide.bs.modal', (event) => {
+                    const focused = document.activeElement;
+                    if (focused && event.target.contains(focused)) {
+                        focused.blur();
+                    }
+                });
+            </script>
         </footer>
     </body>
 </html>
