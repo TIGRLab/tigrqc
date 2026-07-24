@@ -53,11 +53,12 @@ class Project(TableMixin, Model):
         back_populates='project',
         collection_class=attribute_keyed_dict('site_id'),
         cascade='all, delete',
+        passive_deletes=True,
     )
     datasets: Mapped[list['Dataset']] = relationship(
         'Dataset',
         back_populates='project',
-        cascade='all, delete-orphan',
+        cascade='all, delete',
         passive_deletes=True,
     )
 
@@ -121,6 +122,7 @@ class Site(TableMixin, Model):
         back_populates='site',
         collection_class=attribute_keyed_dict('project_id'),
         cascade='all, delete',
+        passive_deletes=True,
     )
 
     @property
@@ -150,10 +152,16 @@ class ProjectSite(TableMixin, Model):
     __tablename__ = 'project_sites'
 
     project_id: Mapped[str] = mapped_column(
-        'project_id', String(32), ForeignKey('projects.id'), primary_key=True
+        'project_id',
+        String(32),
+        ForeignKey('projects.id', ondelete='CASCADE'),
+        primary_key=True,
     )
     site_id: Mapped[str] = mapped_column(
-        'site_id', String(32), ForeignKey('sites.id'), primary_key=True
+        'site_id',
+        String(32),
+        ForeignKey('sites.id', ondelete='CASCADE'),
+        primary_key=True,
     )
 
     project: Mapped['Project'] = relationship(
