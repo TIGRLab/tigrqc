@@ -12,7 +12,6 @@ from sqlalchemy import select
 from tigrqc.access import global_admin_required
 from tigrqc.exceptions import InvalidDataException, UserException
 from tigrqc.models import Dataset, Project, ProjectSite, Site, db
-from tigrqc.filters import make_id
 
 from . import main_bp as main
 from .forms import DataFolderForm, ProjectForm, SiteForm
@@ -74,18 +73,6 @@ def is_duplicate_id(exc: InvalidDataException, table: Model) -> bool:
         'IntegrityError' in str(exc) and
         f'{table.__tablename__}.id' in str(exc)   # type: ignore[attr-defined]
     )
-
-
-def _find_root(given_path: str | Path) -> Path:
-    """Find the whitelisted dir that contains the user path or raise 403 code.
-    """
-    user_path = Path(given_path).resolve()
-
-    for root in current_app.config['DATA_DIRS']:
-        if user_path.is_relative_to(root):
-            return root
-
-    abort(403, 'Invalid path given')
 
 
 def is_safe_path(given_path: str | Path) -> bool:
@@ -245,6 +232,21 @@ def delete_project(project_id: str = ''):
     project.delete()
     flash(f'{project.id} successfully deleted.', 'success')
     return redirect(url_for('main.index'))
+
+
+@main.route('/projects/<int:dataset_id>/delete', methods=['POST'])
+@global_admin_required
+@fresh_login_required
+def delete_dataset(dataset_id: int):
+    """Delete a dataset and all of its contents from the database.
+    """
+    dataset = Dataset.query.get_or_404(dataset_id)
+    project_id = dataset.project.id
+    dataset.delete()
+    flash(f'Dataset {dataset.path} successfully deleted.', 'success')
+    return redirect(
+        url_for('main.project_settings', project_id=project_id)
+    )
 
 
 @main.route('/test/jstree')
