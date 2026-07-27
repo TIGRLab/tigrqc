@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from flask import (abort, current_app, flash, jsonify, redirect,
+from flask import (current_app, flash, jsonify, redirect,
                    render_template, request, url_for)
 from flask_login import fresh_login_required
 from sqlalchemy import select
@@ -72,16 +72,6 @@ def is_duplicate_id(exc: InvalidDataException, table: Model) -> bool:
     return (
         'IntegrityError' in str(exc) and
         f'{table.__tablename__}.id' in str(exc)   # type: ignore[attr-defined]
-    )
-
-
-def is_safe_path(given_path: str | Path) -> bool:
-    """Check if a given path is within a whitelisted DATA_DIR directory.
-    """
-    given_path = Path(given_path).resolve()
-    return any(
-        given_path.is_relative_to(root)
-        for root in current_app.config['DATA_DIRS']
     )
 
 
@@ -249,49 +239,55 @@ def delete_dataset(dataset_id: int):
     )
 
 
-@main.route('/test/jstree')
-def test_jstree():
-    form = DataFolderForm()
-    return render_template('js_tree_test.html', dataset_form=form)
-
-
-@main.route('/api/file')
+@main.route('/api/file_tree')
 def get_file_tree():
+    """Get the contents of the whitelisted DATA_DIRS.
+
+    This route can be used with jstree to explore server directories.
+    """
     node = request.args.get('id', '#')
 
-    print(f'Got request for node {node}')
-
     if node == '#':
-        root_nodes = []
-        for item in current_app.config['DATA_DIRS']:
-            root_nodes.append({
+        root_nodes = [
+            {
                 'id': str(item),
                 'parent': '#',
                 'text': str(item),
-                'children': True if _get_children(item) else False,
-            })
+                'children': bool(_get_children(item)),
+            }
+            for item in current_app.config['DATA_DIRS']
+        ]
         return jsonify(root_nodes)
 
-    print(f'This is contents of "node": {node}')
-
-    entries = []
-    for item in _get_children(Path(node).resolve()):
-        entries.append({
+    entries = [
+        {
             'id': str(item),
             'parent': node,
             'text': str(item.name),
-            'children': True if _get_children(item) else False,
-        })
-
-    print(entries)
+            'children': bool(_get_children(item)),
+        }
+        for item in _get_children(Path(node).resolve())
+    ]
 
     return jsonify(entries)
 
 
-def _get_children(path):
+def _get_children(path: Path) -> list[Path]:
+    """Retrieve all child directories for a path.
+    """
     subdirs = [
         item
         for item in path.iterdir()
-        if item.is_dir() and is_safe_path(item)
+        if item.is_dir() and _is_safe_path(item)
     ]
     return subdirs
+
+
+def _is_safe_path(given_path: str | Path) -> bool:
+    """Check if a given path is within a whitelisted DATA_DIR directory.
+    """
+    given_path = Path(given_path).resolve()
+    return any(
+        given_path.is_relative_to(root)
+        for root in current_app.config['DATA_DIRS']
+    )
