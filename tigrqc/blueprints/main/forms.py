@@ -1,11 +1,14 @@
 """Forms for the main views in the application.
 """
 from flask_wtf import FlaskForm
-from wtforms import (BooleanField, SelectMultipleField, StringField,
-                     TextAreaField)
+from sqlalchemy import select
+from wtforms import (BooleanField, RadioField, SelectMultipleField,
+                     StringField, TextAreaField)
 from wtforms.validators import DataRequired, Length, Regexp
 
-from tigrqc.models import Project, Site
+from tigrqc.extensions import db
+from tigrqc.models import DatasetType, NameScheme, Project, Site
+from tigrqc.validators import SafePath
 
 
 class ProjectForm(FlaskForm):
@@ -95,3 +98,62 @@ class SiteForm(FlaskForm):
             'title': 'An extended name and/or description for the scan site.'
         }
     )
+
+
+class DataFolderForm(FlaskForm):
+    """Form to add a new data input source from the file system.
+    """
+    path = StringField(
+        'Choose directory',
+        [
+            # Max length of a path on Linux
+            Length(max=4096),
+            DataRequired(),
+            SafePath(),
+        ],
+        render_kw={
+            'maxlength': 4096,
+            'title': 'Select a directory to load data from.',
+            'placeholder': 'Type path or select from file tree.',
+            'id': 'dir-input',
+        },
+    )
+    name_type = RadioField(
+        'Naming Convention',
+        [
+            DataRequired()
+        ],
+        render_kw={
+            'title': 'The naming convention used for these files.'
+        },
+    )
+    data_type = RadioField(
+        'Dataset Type',
+        [
+            DataRequired()
+        ],
+        render_kw={
+            'title': 'Determines how these files will be used and displayed.'
+        },
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # Set choices in form based on database contents
+        name_types = db.session.scalars(
+            select(NameScheme).order_by(NameScheme.id)
+        ).all()
+        data_types = db.session.scalars(
+            select(DatasetType).order_by(DatasetType.id)
+        ).all()
+
+        self.name_type.choices = [
+            (nc.id, nc.description)
+            for nc in name_types
+        ]
+
+        self.data_type.choices = [
+            (dt.id, dt.description)
+            for dt in data_types
+        ]

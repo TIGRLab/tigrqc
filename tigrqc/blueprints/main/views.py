@@ -4,17 +4,17 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from flask import (abort, current_app, flash, jsonify, redirect,
+from flask import (current_app, flash, jsonify, redirect,
                    render_template, request, url_for)
 from flask_login import fresh_login_required
 from sqlalchemy import select
 
 from tigrqc.access import global_admin_required
 from tigrqc.exceptions import InvalidDataException, UserException
-from tigrqc.models import Project, ProjectSite, Site, db
+from tigrqc.models import Dataset, Project, ProjectSite, Site, db
 
 from . import main_bp as main
-from .forms import ProjectForm, SiteForm
+from .forms import DataFolderForm, ProjectForm, SiteForm
 
 if TYPE_CHECKING:
     from flask_sqlalchemy.model import Model
@@ -72,28 +72,6 @@ def is_duplicate_id(exc: InvalidDataException, table: Model) -> bool:
     return (
         'IntegrityError' in str(exc) and
         f'{table.__tablename__}.id' in str(exc)   # type: ignore[attr-defined]
-    )
-
-
-def _find_root(given_path: str | Path) -> Path:
-    """Find the whitelisted dir that contains the user path or raise 403 code.
-    """
-    user_path = Path(given_path).resolve()
-
-    for root in current_app.config['DATA_DIRS']:
-        if user_path.is_relative_to(root):
-            return root
-
-    abort(403, 'Invalid path given')
-
-
-def is_safe_path(given_path: str | Path) -> bool:
-    """Check if a given path is within a whitelisted DATA_DIR directory.
-    """
-    given_path = Path(given_path).resolve()
-    return any(
-        given_path.is_relative_to(root)
-        for root in current_app.config['DATA_DIRS']
     )
 
 
@@ -195,14 +173,43 @@ def project_home(project_id: str = ''):
     return render_template('project.html', project=project)
 
 
-@main.route('/projects/<string:project_id>/settings')
+@main.route('/projects/<string:project_id>/settings', methods=['GET'])
 @global_admin_required
 @fresh_login_required
 def project_settings(project_id: str = ''):
     """View or modify a project's settings.
     """
     project = Project.query.get_or_404(project_id)
-    return render_template('project_settings.html', project=project)
+    dataset_form = DataFolderForm()
+
+    return render_template(
+        'project_settings.html', project=project, dataset_form=dataset_form
+    )
+
+
+@main.route('/projects/<string:project_id>/add_dataset', methods=['POST'])
+@global_admin_required
+@fresh_login_required
+def add_dataset(project_id: str = ''):
+    """Add a new dataset to a project.
+    """
+    project = Project.query.get_or_404(project_id)
+    form = DataFolderForm()
+
+    if form.validate_on_submit():
+        dataset = Dataset()
+        dataset.project_id = project.id
+        form.populate_obj(dataset)
+        dataset.save()
+        return render_template(
+            'partials/_dataset_list.html', project=project
+        )
+
+    return render_template(
+            'partials/_add_dataset_modal_body.html',
+            project=project,
+            dataset_form=form,
+        ), 422
 
 
 @main.route('/projects/<string:project_id>/delete', methods=['POST'])
@@ -217,33 +224,70 @@ def delete_project(project_id: str = ''):
     return redirect(url_for('main.index'))
 
 
-@main.route('/data/contents')
+@main.route('/projects/<int:dataset_id>/delete', methods=['POST'])
 @global_admin_required
-def list_data_dirs():
-    """Return the configured data directories.
+@fresh_login_required
+def delete_dataset(dataset_id: int):
+    """Delete a dataset and all of its contents from the database.
     """
-    result = [str(item) for item in current_app.config['DATA_DIRS']]
-    return jsonify(result)
+    dataset = Dataset.query.get_or_404(dataset_id)
+    project_id = dataset.project.id
+    dataset.delete()
+    flash(f'Dataset {dataset.path} successfully deleted.', 'success')
+    return redirect(
+        url_for('main.project_settings', project_id=project_id)
+    )
 
 
-@main.route('/data/contents/list')
-@global_admin_required
-def list_data_subdirs():
-    """Return sub-directories of a whitelisted directory or raise 403.
+@main.route('/api/file_tree')
+def get_file_tree():
+    """Get the contents of the whitelisted DATA_DIRS.
 
-    This will return a mapping of subdir folder names to their full paths for
-    every subdir contained within a whitelisted directory (or any of its
-    descendents).
-
-    Raises 403 if the given directory is not within the whitelisted DATA_DIRS.
+    This route can be used with jstree to explore server directories.
     """
-    full_path = Path(request.args.get('path')).resolve()
-    root_path = _find_root(full_path)
+    node = request.args.get('id', '#')
 
-    subdirs = {
-        item.name: str(item)
-        for item in full_path.iterdir()
-        if item.is_dir() and is_safe_path(item)
-    }
+    if node == '#':
+        root_nodes = [
+            {
+                'id': str(item),
+                'parent': '#',
+                'text': str(item),
+                'children': bool(_get_children(item)),
+            }
+            for item in current_app.config['DATA_DIRS']
+        ]
+        return jsonify(root_nodes)
 
-    return jsonify(subdirs)
+    entries = [
+        {
+            'id': str(item),
+            'parent': node,
+            'text': str(item.name),
+            'children': bool(_get_children(item)),
+        }
+        for item in _get_children(Path(node).resolve())
+    ]
+
+    return jsonify(entries)
+
+
+def _get_children(path: Path) -> list[Path]:
+    """Retrieve all child directories for a path.
+    """
+    subdirs = [
+        item
+        for item in path.iterdir()
+        if item.is_dir() and _is_safe_path(item)
+    ]
+    return subdirs
+
+
+def _is_safe_path(given_path: str | Path) -> bool:
+    """Check if a given path is within a whitelisted DATA_DIR directory.
+    """
+    given_path = Path(given_path).resolve()
+    return any(
+        given_path.is_relative_to(root)
+        for root in current_app.config['DATA_DIRS']
+    )

@@ -1,18 +1,158 @@
 {% extends "base.html" %}
 
+{% block header_scripts %}
+    <!-- jquery 3.7.1 (required for jstree) -->
+    <script src="/static/js/jquery-3.7.1.min.js"></script>
+
+    <!-- jstree 3.3.17 -->
+    <link rel="stylesheet" href="/static/js/jstree-themes/default/style.min.css" />
+    <script src="/static/js/jstree-3.3.17.min.js"></script>
+{% endblock %}
+
 {% block content %}
 
-<button
-    type="button"
-    class="btn btn-danger"
-    data-bs-toggle="modal"
-    data-bs-target="#deleteDangerModal"
-    data-item-name="{{ project.id }}"
-    data-delete-url="{{ url_for('main.delete_project', project_id=project.id) }}"
->
-    <i class="bi bi-trash"></i> Delete Project
-</button>
+<div class="container flex-grow-1 d-flex flex-column mb-3">
+    <div class="d-flex justify-content-between align-items-center mb-3 mt-3">
+        <a
+            type="button"
+            class="btn btn-primary"
+            href="{{ url_for('main.project_home', project_id=project.id) }}"
+        >
+            <i class="bi bi-caret-left-fill"></i> Back to {{ project.id }}
+        </a>
 
+        <div class="d-flex gap-2">
+            <button
+                type="button"
+                class="btn btn-danger"
+                data-bs-toggle="modal"
+                data-bs-target="#deleteDangerModal"
+                data-item-name="{{ project.id }}"
+                data-delete-url="{{ url_for('main.delete_project', project_id=project.id) }}"
+            >
+                <i class="bi bi-trash"></i> Delete Project
+            </button>
+        </div>
+    </div>
+
+    <div class="container-fluid flex-grow-1 d-flex flex-column">
+        <div class="row flex-grow-1">
+            <div class="col-lg-6">
+                <h1 class="display-2">{{ project.id }}</h1>
+                {% if project.name %}
+                    <p class="lead">
+                        {{ project.name }}
+                    </p>
+                {% endif %}
+                <dl class="row mt-5">
+                    {% if project.description %}
+                        <dt class="col-sm-3">
+                            Description
+                        </dt>
+                        <dd class="col-sm-9">
+                            {{ project.description }}
+                        </dd>
+                    {% endif %}
+
+                    {# PI info, etc. goes here later. #}
+                </dl>
+            </div>
+            <div class="col-lg-3 border-start d-flex flex-column">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h3 class="mb-0">
+                        Datasets
+                    </h3>
+                    <button
+                        type="button"
+                        class="btn btn-primary"
+                        data-bs-toggle="modal"
+                        data-bs-target="#addDatasetModal"
+                    >
+                        <i class="bi bi-folder-plus"></i> Add
+                    </button>
+
+                </div>
+                <div id="datasetsList" class="d-flex flex-column">
+                    {% if not project.datasets %}
+                        <div class="flex-grow-1 d-flex justify-content-center align-items-center text-muted">
+                            <p>No datasets yet.</p>
+                        </div>
+                    {% else %}
+                        {% include 'partials/_dataset_list.html' %}
+                    {% endif %}
+                </div>
+            </div>
+            <div class="col-lg-3 border-start d-flex flex-column">
+                <h3 class="text-center">Users</h3>
+                <div class="flex-grow-1 d-flex justify-content-center align-items-center text-muted">
+                    No users given access yet.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# Used by the 'delete project' button #}
 {% include 'partials/_delete_danger_modal.html' %}
+
+{# Used by the 'add dataset' button #}
+{% include 'partials/_add_dataset_modal.html' %}
+
+<script>
+    /////////////////////////////////////////////
+    // This controls the file tree / path selection logic for
+    // the 'add dataset' modal.
+    //     - The div with id 'file-tree' gets replaced with an interactive tree
+    //     - On expanding a dir, its children get lazy-loaded from the server
+    //     - On clicking an item in the tree, the element with id 'dir-input'
+    //       (should be a text input field) gets the path stored as its value.
+    $('#file-tree').jstree({
+        core: {
+            data: {
+            url: "{{ url_for('main.get_file_tree') }}",
+            data: function (node) {
+                return { id: node.id };  // '#' on first load, then node.id
+            }
+            },
+            check_callback: true
+        },
+        plugins: [
+            "wholerow",
+            "types",
+            "sort"
+        ],
+        types: {
+            default: { icon: "jstree-folder" }
+        }
+    });
+
+    $('#file-tree').on('select_node.jstree', function (e, data) {
+        const inputField = document.getElementById('dir-input');
+        if (inputField) {
+            inputField.value = data.node.id;
+        }
+    });
+    //
+    /////////////////////////////////////////////
+
+    /////////////////////////////////////////////
+    // This manages the 'add dataset' modal
+    //     - Ensures the modal closes when it's submitted with valid data
+    //     - Ensures it stays open if invalid data submits, so user can
+    //       see form error messages and try again.
+    document.body.addEventListener('htmx:afterRequest', (evt) => {
+        if (evt.detail.elt.id === 'addDataset' && evt.detail.successful) {
+            const modalEl = document.getElementById('addDatasetModal');
+            bootstrap.Modal.getInstance(modalEl).hide();
+        }
+    });
+
+    document.getElementById('addDatasetModal').addEventListener('hidden.bs.modal', () => {
+        const form = document.getElementById('addDataset');
+        if (form) form.reset();
+    });
+    //
+    /////////////////////////////////////////////
+</script>
 
 {% endblock %}

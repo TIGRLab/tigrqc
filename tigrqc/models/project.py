@@ -14,6 +14,8 @@ from tigrqc.models.types import PathType
 
 if TYPE_CHECKING:
     from flask_sqlalchemy.model import Model
+
+    from tigrqc.models.dataset import Dataset
 else:
     Model = db.Model
 
@@ -51,6 +53,13 @@ class Project(TableMixin, Model):
         back_populates='project',
         collection_class=attribute_keyed_dict('site_id'),
         cascade='all, delete',
+        passive_deletes=True,
+    )
+    datasets: Mapped[list['Dataset']] = relationship(
+        'Dataset',
+        back_populates='project',
+        cascade='all, delete',
+        passive_deletes=True,
     )
 
     def __repr__(self) -> str:
@@ -113,10 +122,13 @@ class Site(TableMixin, Model):
         back_populates='site',
         collection_class=attribute_keyed_dict('project_id'),
         cascade='all, delete',
+        passive_deletes=True,
     )
 
     @property
     def label(self) -> str:
+        """Provide a meaningful label for a site instance.
+        """
         return f'{self.id} - {self.name}' if self.name else self.id
 
     def __repr__(self):
@@ -140,10 +152,16 @@ class ProjectSite(TableMixin, Model):
     __tablename__ = 'project_sites'
 
     project_id: Mapped[str] = mapped_column(
-        'project_id', String(32), ForeignKey('projects.id'), primary_key=True
+        'project_id',
+        String(32),
+        ForeignKey('projects.id', ondelete='CASCADE'),
+        primary_key=True,
     )
     site_id: Mapped[str] = mapped_column(
-        'site_id', String(32), ForeignKey('sites.id'), primary_key=True
+        'site_id',
+        String(32),
+        ForeignKey('sites.id', ondelete='CASCADE'),
+        primary_key=True,
     )
 
     project: Mapped['Project'] = relationship(

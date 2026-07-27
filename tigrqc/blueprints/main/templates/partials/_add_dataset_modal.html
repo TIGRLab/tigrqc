@@ -1,0 +1,24 @@
+<div class="modal fade" id="addDatasetModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-scrollable modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add a data directory to {{ project.id }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="addDatasetModalBody">
+                {#
+                    The body is its own partial so htmx can update with errors
+                    when invalid data submitted
+                #}
+                {% include 'partials/_add_dataset_modal_body.html' %}
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="submit" form="addDataset" class="btn btn-primary">
+                    <i class="bi bi-plus"></i> Add Dataset
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,7 +1,20 @@
+/* This may no longer be needed... check if replaceable */
 .top-center {
   position: fixed;
   top: 1rem;
   left: 50%;
   transform: translateX(-50%);
   z-index: 1080;
+}
+
+/* Allow hover over parent to reveal another element (e.g. hidden button) */
+.hover-reveal {
+  opacity: 0;
+  transition: opacity 0.2s ease-in-out;
+  pointer-events: none;
+}
+
+.hover-parent:hover .hover-reveal {
+  opacity: 1;
+  pointer-events: auto;
 }

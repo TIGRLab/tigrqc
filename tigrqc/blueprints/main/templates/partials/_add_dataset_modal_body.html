@@ -1,0 +1,12 @@
+{% from "macros/_forms.html" import render_form %}
+<div id="file-tree" hx-preserve="true"></div>
+<form
+    id="addDataset"
+    autocomplete="off"
+    hx-post="{{ url_for('main.add_dataset', project_id=project.id) }}"
+    hx-target="#datasetsList"
+    hx-swap="innerHTML"
+    hx-target-error="#addDatasetModalBody"
+>
+    {{ render_form(dataset_form) }}
+</form>

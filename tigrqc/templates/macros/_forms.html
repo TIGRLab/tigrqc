@@ -1,0 +1,60 @@
+{% macro render_form(form) %}
+{#
+    'form' is expected to be a flask-wtform form instance. Note that the
+    calling template is expected to add the 'form' tag itself (so it can set
+    destination, etc.) and its own submit button.
+#}
+
+    {{ form.hidden_tag() }}
+
+    {% for field in form if field.widget.input_type != "hidden" %}
+        {{ render_field(field) }}
+    {% endfor %}
+
+{% endmacro %}
+
+
+{% macro render_field(field, inline=False, switch=True) %}
+{#
+    Render a flask-wtform field. Proper bootstrap classes will be applied.
+    By default:
+        - RadioField does NOT render inline (inline=True to change this)
+        - BooleanField renders as a switch (switch=False to revert to checkbox)
+#}
+
+    {% if field.type in ["SelectField", "SelectMultipleField"] %}
+        {{ field.label(class="form-label") }}
+        {{ field(class="form-select" + (" is-invalid" if field.errors else "")) }}
+    {% elif field.type == "BooleanField" %}
+        <div class="form-check {{ 'form-switch' if switch else '' }}">
+            {{ field(class="form-check-input" + (" is-invalid" if field.errors else "")) }}
+            {{ field.label(class="form-check-label") }}
+        </div>
+    {% elif field.type == "RadioField" %}
+        <fieldset class="border rounded-3 p-3 mb-3">
+            <legend class="form-label fs-6 fw-semibold">
+                {{ field.label.text }}
+            </legend>
+            {% for option in field %}
+                <div class="form-check {{ 'form-check-inline' if inline else ''}}">
+                    {{ option(class="form-check-input" + (" is-invalid" if field.errors else "")) }}
+                    {{ option.label(class="form-check-label") }}
+                </div>
+            {% endfor %}
+        </fieldset>
+    {% elif field.type == "RangeField" %}
+        {{ field.label(class="form-label") }}
+        {{ field(class="form-range" + (" is-invalid" if field.errors else "")) }}
+    {% else %}
+        {{ field.label(class="form-label") }}
+        {{ field(class="form-control mb-3" + (" is-invalid" if field.errors else "")) }}
+    {% endif %}
+
+    {% for error in field.errors %}
+        <span class="text-danger small">
+            {{ error }}
+        </span>
+    {% endfor %}
+
+{% endmacro %}
+
