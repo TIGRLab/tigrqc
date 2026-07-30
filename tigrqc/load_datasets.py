@@ -1,5 +1,6 @@
 """Handles the reading of datasets (regardless of type or name scheme).
 """
+from dataclasses import dataclass, field
 import glob
 import os
 import re
@@ -7,6 +8,7 @@ from abc import ABC
 from pathlib import Path
 
 from tigrqc.exceptions import TigrQcException
+from tigrqc.models import InvalidDataDir
 
 # To do:
 #   - Implement overrides of templates + patterns (but must constraint it to
@@ -28,6 +30,15 @@ from tigrqc.exceptions import TigrQcException
 #   -> Might want to also through a group around the entire expression?
 #       and have nested 'session' but not sure if necessary for my purposes yet..
 
+# @dataclass
+# class ParsedID:
+#     raw: str
+#     fields: dict
+#     valid: bool
+#     errors: list = field(default_factory=list)
+
+
+
 
 
 class NameConvention(ABC):
@@ -40,8 +51,12 @@ class NameConvention(ABC):
                                             # At a minimum should define subject
     default_patterns: dict = {}             # Default regexes to be slotted into templates
 
-    def __init__(self, patterns: dict | None = None):
+    def __init__(self, patterns: dict | None = None,
+                 field_validation: dict | None = None
+    ):
         patterns = patterns or {}
+        field_validation = field_validation or {}
+        self.validation = field_validation
         self.patterns = {**self.default_patterns, **patterns}
         self.regexes = self._compile()
 
@@ -54,7 +69,7 @@ class NameConvention(ABC):
                 token = "{" + name + "}"
                 if token in template:
                     template = template.replace(token, f'(?P<{name}>{item})')
-            print(template)
+
             try:
                 regexes[template_type] = re.compile(template)
             except re.error as e:
@@ -65,6 +80,60 @@ class NameConvention(ABC):
                 ) from e
 
         return regexes
+
+    # def parse_as_id(self, item):
+    #     return
+
+    # def parse_as_session(self, item):
+    #     return
+
+    # def parse_as_file(self, item):
+    #     return
+    def parse_id(self, item):
+        """Parse a full subject ID and do minimal study / site validation.
+        Validator format is:
+            {
+                'studycode': ['site1', 'site2', 'site3']
+            }
+        Use 'any' to skip study validation and only validate site. Leave
+        site list empty to skip site validation.
+        """
+        result = self.regexes['subject'].match(item)
+        if not result:
+            if 'phantom' not in self.regexes:
+                # No phantoms so definitely not a match
+                return None
+
+            result = self.regexes['phantom'].match(item)
+            if not result:
+                # ID doesn't match basic ID format of this convention
+                return None
+            # ID is a phantom, so proceed
+
+        if not self.validation:
+            # No field validation required, so return parsed ID
+            return result
+
+        if 'any' in self.validation:
+            # Only site validation needed.
+            if result.group('site') in self.validation['any']:
+                # Site is valid
+                return result
+            # Site failed validation
+            return None
+
+        if result.group('study') in self.validation:
+            # Study is valid, now check site
+            if not self.validation[result.group('study')]:
+                # No site validation needed, so return parsed ID
+                return result
+
+            if result.group('site') in self.validation[result.group('study')]:
+                # Site is valid also
+                return result
+
+        # Validation failed
+        return None
 
 
 class DatmanConvention(NameConvention):
@@ -77,10 +146,12 @@ class DatmanConvention(NameConvention):
     }
     # This was taken from datman.scanid. There, though, we have extra bits
     # to prevent matching KCNI IDs (or phantoms). Also, it's maximally permissive...
+    # Should probably be tightened to better reflect what we actually _expect_ it to be
+    # in practice, like omitting the SE + MR and ensure session/timepoint are numeric
     default_patterns: dict = {
         'study': r'[^_]+',
         'site': r'[^_]+',
-        'subid': r'[^_]+',
+        'subid': r'(?!PHA)([^_]+)',
         'timepoint': r'[^_]+',
         'session': r'[^_]+',
     }
@@ -156,3 +227,120 @@ def read_dataset(
     # Implement for a fresh read
     # Implement for a refresh (handle removed + changed objects...)
     return
+
+
+# def read_datman(
+#         path: Path, data_type: str,
+#         field_validation: dict[str, list[str]] | None = None
+# ) -> dict[str, list]:
+#     """Take a path, a data type, and a dictionary of study codes -> site codes
+#         and find every valid + invalid item in the given path.
+
+#     field_validation can be a dict of form:
+#         {
+#             'study_code1': ['SITE1', 'SITE2', ..., 'SITEN'],
+#             ...
+#             'study_codeN': ['SITEA', 'SITEB', ..., 'SITEZ']
+#         }
+#     And ID must match or whole thing fails, and then site must match secondarily.
+#     OR it can be of the form:
+#         {
+#             'any': ['SITE1', ..., 'SITEN']
+#         }
+#     And study code validation will be skipped. Site code must match list.
+#     OR to skip site code validation you can use:
+#         {
+#             'study_code1': [],
+#             'study_code2': [],
+#             ...
+#             'study_codeN': []
+#         }
+
+#     Data type determines how the path contents will be parsed.
+#     """
+
+
+#     return
+
+
+def read_raw_bids(dataset_path: Path, dataset_id: int, bc: BidsConvention):
+    """A test function read in a bids dataset of raw data.
+    """
+    # Should maybe have handling here in case the dataset path no longer
+    # exists when the read is run (like moved or archived or deleted since
+    # first added to DB)
+
+    for item in dataset_path.iterdir():
+        if not item.is_dir():
+            continue
+
+        # May want to handle exceptions here
+        parsed_id = bc.parse_id(item.name)
+
+        if not parsed_id:
+            bad_subdir = InvalidDataDir(
+                dataset_id=dataset_id,
+                subdir=item.name
+            )
+            # May want to handle exceptions here
+            bad_subdir.save()
+            continue
+
+        # Try to make database records here
+        #   info needed:
+        #       - Study code if it exists (will have foreign key on study anyway)
+        #       - Site if it exists. If ID doesn't include... and more than 1
+        #           site exists in the project, you're screwed.
+        #       - SUBID, will always exist
+        #       - timepoint (bids sess) num, will always exist
+        #       - session (repeat), if it exists will be in a sidecar. Otherwise set
+        #           to 1. Have to read all sidecars and separate into
+        #           sessions in case more than one exists at read time.
+        #       - Time the folder was made or updated
+        #       Further:
+        #           - One record per nifti found
+        #               -> type (from modality field) is this needed by the dash now?
+        #               -> series number
+        #               -> series description (needed?)
+        #               -> date it was made / modified (?) on file system
+        #               -> Date the scan was done according to scanner (?)
+        #               -> The json contents
+        #               -> Do we currently store bvec / bval? or do we just
+        #                   grab it when we 'know' from tags that it exists?
+        #                   is there a sensible way to hook it took the main record
+        #                   without having to do this tag inference etc.?
+
+
+        # Probably want to pull these fields out of the re object and
+        # normalize so you can just grab parsed_id.study, etc. without the whole dance
+        study = parsed_id.group('study') if 'study' in parsed_id.groupdict() else ''
+        site = parsed_id.group('site') if 'site' in parsed_id.groupdict() else ''
+        subid = parsed_id.group('id') if 'id' in parsed_id.groupdict() else parsed_id.group('subid')
+
+        for session in item.iterdir():
+
+            if not session.is_dir():
+                continue
+
+            # This should probably be replaced with a method
+            # Also, ses folders are optional when only one session exists...
+            parsed_ses = bc.regexes['session'].match(session.name)
+
+            if not parsed_ses:
+                # In valid bids the subdirs should either be modality dirs
+                # OR a ses- dir. If not ses and no files found... I guess
+                # create an empty session and report it as empty.
+                timepoint = '01'
+            else:
+                # Clean this up too.
+                timepoint = parsed_ses.groups('timepoint') # e.g. '01'
+
+            # Ugh. Need modality too... Maybe just have a database overridable
+            # path parser. But then have to handle diff path separators.
+
+
+
+
+
+
+

@@ -33,6 +33,7 @@ INVALID_DATMAN_IDS = [
     'TES01_SITE_0001_01',                   # Missing session or timepoint
     'TES01_SITE_0001',                      # Missing both session + timepoint
     'tes01_site_0001',                      # Wrong case
+    'TES01_SITE_PHA_000001_01',             # Phantom with a timepoint...
 ]
 
 INVALID_KCNI_IDS = [
@@ -67,46 +68,14 @@ INVALID_KCNI_IDS = [
     'STU01_SIT_PHA_12345678',               # Phantom missing 'type' code
 ]
 
-# Datman parsing regexes swiped from datman.scanid
-#     scan_re = (
-#         "(?P<id>(?P<study>[^_]+)_"
-#         "(?P<site>[^_]+)_"
-#         "(?P<subject>[^_]+)(?<!PHA)_"
-#         "(?P<timepoint>[^_]+)_"
-#         "(?!MR)(?!SE)(?P<session>[^_]+))"
-#     )
 
-#     pha_re = (
-#         "(?P<id>(?P<study>[^_]+)_"
-#         "(?P<site>[^_]+)_"
-#         "(?P<subject>PHA_(?P<type>[A-Z]{3})(?P<num>[0-9]{4,6}))"
-#         "(?P<timepoint>)(?P<session>))"
-#     )  # empty tp + session
-
-#     scan_pattern = re.compile("^" + scan_re + "$")
-#     pha_pattern = re.compile("^" + pha_re + "$")
-
-# For files?
-#
+# Bids test case needed to confirm subid override can let a study ID in too
+# patterns = {'subid': '(?P<study>[A-Z]{3}[0-9]{2})(?P<site>[A-Z]{3})(?P<id>[A-Z0-9]+)'
+# bc = BidsConvention(patterns=patterns)
+# Then CLM01UTO00001 etc. should work.
 
 
-
-# KCNI parsing regexes swiped from datman.scanid
-# scan_re = (
-#     "(?P<id>(?P<study>[A-Z]{3}[0-9]{2})_"
-#     "(?P<site>[A-Z]{3})_"
-#     "(?P<subject>[A-Z0-9]{4,8})_"
-#     "(?P<timepoint>[0-9]{2})_"
-#     "SE(?P<session>[0-9]{2})_(?P<modality>[A-Z]{2,4}))"
-# )
-
-# pha_re = (
-#     "(?P<id>(?P<study>[A-Z]{3}[0-9]{2})_"
-#     "(?P<site>[A-Z]{3})_"
-#     "(?P<pha_type>[A-Z]{3})PHA_"
-#     "(?P<subject>[0-9]{4,6})_(?P<modality>[A-Z]{2,4})"
-#     "(?P<timepoint>)(?P<session>))"
-# )  # empty
-
-# scan_pattern = re.compile("^" + scan_re + "$")
-# pha_pattern = re.compile("^" + pha_re + "$")
+# Need tests for:
+#   -> Basic ID parsing
+#   -> pattern overrides
+#   -> Field validation (study and/or site) or none at all
