@@ -30,7 +30,7 @@ class EncryptedType(TypeDecorator[str]):
     def python_type(self):
         """The type the column maps to.
         """
-        return String
+        return str
 
     def process_bind_param(
             self, value: str | None, dialect: Dialect
@@ -137,7 +137,7 @@ class UrlType(TypeDecorator[str]):  # pylint: disable=W0223
     def python_type(self):
         """The type the column maps to.
         """
-        return String
+        return str
 
     def process_bind_param(
             self, value: str | None, dialect: Dialect
