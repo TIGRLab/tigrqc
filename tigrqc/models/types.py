@@ -60,7 +60,7 @@ class EncryptedType(TypeDecorator[str]):
         """Required to be defined. Returns the result of process_bind_param.
         """
         result = self.process_bind_param(value, dialect)
-        return result if result is not None else ''
+        return result if result is not None else 'NULL'
 
 
 class PathType(TypeDecorator[Path]):
@@ -115,7 +115,7 @@ class PathType(TypeDecorator[Path]):
         """Required to be defined. Returns result of process_bind_param.
         """
         result = self.process_bind_param(value, dialect)
-        return result if result is not None else ''
+        return result if result is not None else 'NULL'
 
 
 class UrlType(TypeDecorator[str]):  # pylint: disable=W0223
