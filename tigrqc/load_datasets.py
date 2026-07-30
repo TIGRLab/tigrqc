@@ -184,8 +184,8 @@ class BidsConvention(NameConvention):
     """
     templates: dict = {
         'subject': '^sub-{subid}$',
-        'session': '^ses-{timepoint}$',
-        # 'file': ''
+        'session': '^ses-{timepoint}$'
+        # 'file'? Needed?
 
     # This will parse a bids file name into its key-value pairs
     # Doesn't account for the expected ordering, validation of allowed keys and vals etc.
@@ -202,6 +202,12 @@ class BidsConvention(NameConvention):
         'subid': r'(?P<site>[A-Z]{3})(?P<id>[A-Z0-9]+)',
         'timepoint': r'[0-9]{2}',
     }
+
+
+class BidsSeries:
+
+    def __init__(self, file_path: Path):
+
 
 
 # Types of local data
@@ -275,6 +281,8 @@ def read_raw_bids(dataset_path: Path, dataset_id: int, bc: BidsConvention):
             continue
 
         # May want to handle exceptions here
+        # Site and study code validation should happen here if anywhere, to
+        # avoid wasting time parsing misnamed folders.
         parsed_id = bc.parse_id(item.name)
 
         if not parsed_id:
@@ -317,6 +325,65 @@ def read_raw_bids(dataset_path: Path, dataset_id: int, bc: BidsConvention):
         site = parsed_id.group('site') if 'site' in parsed_id.groupdict() else ''
         subid = parsed_id.group('id') if 'id' in parsed_id.groupdict() else parsed_id.group('subid')
 
+        parsed_dir = {}
+        for nifti in item.rglob('*.nii*'):
+            # parent.parent will either be sub- or ses- or a mistake
+            session_id = bc.regexes['session'].match(nifti.parent.parent.name)
+
+            if session_id:
+                session = session_id.group('timepoint')
+            elif nifti.parent.parent == item:
+                # No ses-, valid bids and means session = 1
+                session = '01'
+            else:
+                parsed_dir.setdefault('invalid', []).append(nifti)
+                continue
+
+            parsed_dir.setdefault(session, {}).setdefault(nifti.parent.name, []).append(nifti)
+
+        invalid_subdirs = []
+        for nifti in item.rglob('*.nii*'):
+            # Do you really want to check if session / timepoint exists every
+            # single time and add it or is there a better way here...
+            if nifti.parent.parent in invalid_subdirs:
+                # Skip items from already-known-to-be-wrong 'ses' dirs
+                continue
+
+            session_id = bc.regexes['session'].match(nifti.parent.parent.name)
+
+            if session_id:
+                session = session_id.groups('timepoint')
+            elif nifti.parent.parent == item:
+                # The optional ses- folder was omitted. So it's session 1
+                session = '01'
+            else:
+                # valid bids is either:
+                #       sub-X/ses-Y/modality/nifti
+                #       OR sub-X/modality/nifti
+                # At this point it's neither. So capture the bad parent folder
+                # and ignore its contents until it's handled.
+                invalid_subdirs.append(nifti.parent.parent)
+                continue
+
+            modality = nifti.parent.name
+
+
+            if nifti.parent.parent == item:
+                # Catch instances where the optional ses- dir has been omitted
+                session = '01'
+            else:
+                # Clean this up
+                sess_id = bc.regexes['session'].match(nifti.parent.parent.name)
+                if not sess_id:
+                    # Parent of modality isn't the sub folder and its not a
+                    # recognizable ses- folder. So... I guess block qc
+                    # of niftis until it's fixed. Report the directory.
+                    invalid_subdirs.add(nifti.parent.parent)
+
+
+
+
+        # This is maybe a bad approach. Use above.
         for session in item.iterdir():
 
             if not session.is_dir():
