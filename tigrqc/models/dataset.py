@@ -3,12 +3,15 @@
 Each dataset is owned by a 'Project' and will contain files which
 belong to 'Sessions'/'Subjects' also owned by the 'Project'.
 """
+import enum
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import (Boolean, DateTime, Enum, ForeignKey, Integer, String,
+                        UniqueConstraint, func)
+from sqlalchemy.orm import (Mapped, attribute_keyed_dict, mapped_column,
+                            relationship)
 
 from tigrqc.extensions import db
 from tigrqc.models.mixins import TableMixin
@@ -27,7 +30,7 @@ class Dataset(TableMixin, Model):
 
     Attributes:
         id: The unique ID for this data collection.
-        path: The path to the files on the server's file system.
+        # path: The path to the files on the server's file system.
     """
     __tablename__ = 'datasets'
 
@@ -37,10 +40,10 @@ class Dataset(TableMixin, Model):
         ForeignKey('projects.id', ondelete='CASCADE'),
         nullable=False
     )
-    path: Mapped[Path] = mapped_column(PathType, nullable=False)
-    name_type: Mapped[str] = mapped_column(
-        String(12), ForeignKey('name_schemes.id'), nullable=False
-    )
+    # path: Mapped[Path] = mapped_column(PathType, nullable=False)
+    # name_type: Mapped[str] = mapped_column(
+    #     String(12), ForeignKey('name_schemes.id'), nullable=False
+    # )
     data_type: Mapped[str] = mapped_column(
         String(12), ForeignKey('dataset_types.id'), nullable=False
     )
@@ -48,8 +51,14 @@ class Dataset(TableMixin, Model):
     project: Mapped['Project'] = relationship(
         'Project', back_populates='datasets'
     )
-    invalid_dirs: Mapped[list['InvalidDataDir']] = relationship(
-        'InvalidDataDir',
+    # invalid_dirs: Mapped[list['InvalidData']] = relationship(
+    #     'InvalidData',
+    #     back_populates='dataset',
+    #     cascade='all, delete',
+    #     passive_deletes=True,
+    # )
+    source_dirs: Mapped[list['SourceDir']] = relationship(
+        'SourceDir',
         back_populates='dataset',
         cascade='all, delete',
         passive_deletes=True,
@@ -74,30 +83,6 @@ class DatasetType(TableMixin, Model):
     id: Mapped[str] = mapped_column(String(12), primary_key=True)
     description: Mapped[str] = mapped_column(String(60))
 
-
-class InvalidDataDir(TableMixin, Model):
-    """Handles subdirs that don't conform to the expected name scheme.
-
-    If a subdirectory exists in a dataset it _might_ be something to ignore
-    or it could be misnamed subject data. This tracks these directories
-    so they can be reported to users or intentionally ignored.
-    """
-    __tablename__ = 'invalid_dataset_dirs'
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    dataset_id: Mapped[int] = mapped_column(
-        Integer,
-        ForeignKey('datasets.id', ondelete='CASCADE'),
-        nullable=False
-    )
-    dirname: Mapped[str] = mapped_column(String(255), nullable=False)
-    ignore: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False
-    )
-
-    dataset: Mapped['Dataset'] = relationship(
-        'Dataset', back_populates='invalid_dirs'
-    )
 
 # DM: STUDY, SITE, SUBID, TIMEPOINT, REPEAT
 # KCNI: STUDY, SITE, SUBID, TIMEPOINT, REPEAT, MODALITY
@@ -130,11 +115,21 @@ class Timepoint(TableMixin, Model):
         Boolean, default=False, nullable=False
     )
 
-    project: Mapped['Project'] = relationship(
-        'Project', back_populates='timepoints'
-    )
-    site: Mapped['Site'] = relationship(
-        'Site', back_populates='timepoints'
+    # subject, num should be unique pairing
+    # project/site/subject should be unique tuple
+
+    # project: Mapped['Project'] = relationship(
+    #     'Project', back_populates='timepoints'
+    # )
+    # site: Mapped['Site'] = relationship(
+    #     'Site', back_populates='timepoints'
+    # )
+    attempts: Mapped[dict[str, 'Attempt']] = relationship(
+        'Attempt',
+        back_populates='parent',
+        collection_class=attribute_keyed_dict('num'),
+        cascade='all, delete',
+        passive_deletes=True,
     )
 
 
@@ -155,7 +150,23 @@ class Attempt(TableMixin, Model):
         nullable=False,
     )
     num: Mapped[str] = mapped_column(PaddedNumType(width=2), nullable=False)
-    scan_date: Mapped[datetime] = mapped_column(DateTime(timezone=False))
+    # Not readily available from sidecars
+    scan_date: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    parent: Mapped['Timepoint'] = relationship(
+        'Timepoint',
+        back_populates='attempts',
+    )
+    scans: Mapped['Series'] = relationship(
+        'Series',
+        back_populates='parent',
+        cascade='all, delete',
+        passive_deletes=True,
+        order_by='Series.num',
+    )
 
 
 class Series(TableMixin, Model):
@@ -171,8 +182,207 @@ class Series(TableMixin, Model):
     )
     # Double check that this can handle series num > 2 digit
     num: Mapped[int] = mapped_column(
-        PaddedNumType(2), nullable=False
+        PaddedNumType(width=2), nullable=False
     )
     # Dicom header character limit
     description: Mapped[int] = mapped_column(String(64), nullable=False)
 
+    parent: Mapped['Attempt'] = relationship(
+        'Attempt',
+        back_populates='scans',
+    )
+
+
+# class InvalidDataDir(TableMixin, Model):
+#     """Handles subdirs that don't conform to the expected name scheme.
+
+#     If a subdirectory exists in a dataset it _might_ be something to ignore
+#     or it could be misnamed subject data. This tracks these directories
+#     so they can be reported to users or intentionally ignored.
+#     """
+#     __tablename__ = 'invalid_dataset_dirs'
+
+#     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+#     dataset_id: Mapped[int] = mapped_column(
+#         Integer,
+#         ForeignKey('datasets.id', ondelete='CASCADE'),
+#         nullable=False
+#     )
+#     dirname: Mapped[str] = mapped_column(String(255), nullable=False)
+#     ignore: Mapped[bool] = mapped_column(
+#         Boolean, default=False, nullable=False
+#     )
+
+#     dataset: Mapped['Dataset'] = relationship(
+#         'Dataset', back_populates='invalid_dirs'
+#     )
+
+
+
+class SourceDir(TableMixin, Model):
+    """An input directory of data.
+
+    Each source dir can only ever be added once, but can be assigned to
+    multiple 'datasets'.
+    """
+    __tablename__ = 'source_dirs'
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    dataset_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey('datasets.id', ondelete='CASCADE'),
+        nullable=False
+    )
+    path: Mapped[Path] = mapped_column(PathType, nullable=False)
+    name_type: Mapped[str] = mapped_column(
+        String(12),
+        ForeignKey('name_schemes.id'),
+        nullable=False,
+    )
+    created: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+    last_read: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        UniqueConstraint('path', name='unique_source_dir_path'),
+    )
+
+    dataset: Mapped['Dataset'] = relationship(
+        'Dataset',
+        back_populates='source_dirs',
+    )
+    # SubjectDir
+    # InvalidDir (those without timepoint_id)
+
+
+class SubjectDir(TableMixin, Model):
+    """A subject dir from a source directory.
+    """
+    __tablename__ = 'subject_dirs'
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    timepoint_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey('timepoints.id', ondelete='CASCADE'),
+        nullable=False,
+    )
+    sourcedir_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey('source_dirs.id', ondelete='CASCADE'),
+        nullable=False,
+    )
+    dirname: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    # timepoint rel
+    # source_dir parent rel
+    # files rel
+
+    __table_args__ = (
+        UniqueConstraint(
+            'sourcedir_id',
+            'dirname',
+            name='uq_subject_dir_path',
+        ),
+    )
+
+# This probably needs to be a table with regexes (so you can auto ingest
+#   .nii.gz, or *.pdf etc?) But maybe that's better handled in app.
+# Complicates migrations also... Maybe it should be a table.
+class FileType(str, enum.Enum):
+    NIFTI = "nifti"
+    JSON = "json"
+    BVEC = "bvec"
+    BVAL = "bval"
+    TECH_NOTES = "tech_notes"
+
+
+# This might need to be reworked... raw niftis are special and json data
+# has to be read and stored differently also.
+class File(TableMixin, Model):
+    """An input file read from a source directory.
+    """
+    __tablename__ = 'files'
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    subdir_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey('subject_dirs.id', ondelete='CASCADE'),
+        nullable=False,
+    )
+    series_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey('series.id', ondelete='CASCADE'),
+        nullable=False,
+    )
+    rel_path: Mapped[str] = mapped_column(PathType, nullable=False)
+    file_type: Mapped[str] = mapped_column(
+        Enum(
+            FileType,
+            name='file_type_enum',
+            native_enum=True,
+            validate_strings=True,
+        ),
+        nullable=False
+    )
+    # Might need additional columns for file attributes (dir-, etc.)...
+    # size (bytes)?
+    # checksum?
+
+    # subdir parent rel
+    # series rel
+    # later - QC records rel (unless assoc table joined straight on Series?)
+
+    # I think I need another constraint here to avoid more than one nifti
+    # for a single series (i.e. duplicates copies...)
+    __table_args__ = (
+        UniqueConstraint('subdir_id', 'rel_path', name='uq_file_path'),
+    )
+
+
+class InvalidData(TableMixin, Model):
+    """Manages all items (file/dir) found within a subject source dir.
+
+    Items are considered invalid if they don't find the expected name / org
+    scheme for the source directory.
+    """
+    __tablename__ = 'invalid_data'
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    sourcedir_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey('source_dirs.id', ondelete='CASCADE'),
+        nullable=False,
+    )
+    # Null if malformed dir in 'subject' level. Otherwise will
+    # always link to a session if it's a contained file that's invalid.
+    timepoint_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey('timepoints.id', ondelete='CASCADE'),
+        nullable=True,
+    )
+    rel_path: Mapped[str] = mapped_column(PathType, nullable=False)
+    # Might want to expand this to three states (to reflect 'unseen' state)
+    # may also want to add a field to insert a reason why ignore (with auto
+    # ignores getting a standard message)
+    ignore: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+    )
+
+    # sourcedir parent rel
+    # IF timepoint, rel should exist between.
+
+    __table_args__ = (
+        UniqueConstraint(
+            'sourcedir_id', 'rel_path', name='uq_invalid_data_path',
+        ),
+    )
