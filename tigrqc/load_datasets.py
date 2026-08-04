@@ -2,13 +2,14 @@
 """
 from dataclasses import dataclass, field
 import glob
+import json
 import os
 import re
 from abc import ABC
 from pathlib import Path
 
 from tigrqc.exceptions import TigrQcException
-from tigrqc.models import InvalidDataDir
+# from tigrqc.models import InvalidDataDir
 
 # To do:
 #   - Implement overrides of templates + patterns (but must constraint it to
@@ -184,8 +185,10 @@ class BidsConvention(NameConvention):
     """
     templates: dict = {
         'subject': '^sub-{subid}$',
-        'session': '^ses-{timepoint}$'
-        # 'file'? Needed?
+        'session': '^ses-{timepoint}$',
+        # 'file': '^sub-{subid}_ses-{timepoint}_{entities}{suffix}{ext}$'
+        # 'file': '^{entities}{suffix}{ext}$',
+        # 'fields': '(?P<key>[A-Za-z0-9]+)-(?P<value>[A-Za-z0-9]+)',
 
     # This will parse a bids file name into its key-value pairs
     # Doesn't account for the expected ordering, validation of allowed keys and vals etc.
@@ -201,12 +204,15 @@ class BidsConvention(NameConvention):
     default_patterns: dict = {
         'subid': r'(?P<site>[A-Z]{3})(?P<id>[A-Z0-9]+)',
         'timepoint': r'[0-9]{2}',
+        # 'entities': r'(?P<entities>(?:[A-Za-z0-9]+-[A-Za-z0-9]+_)*)',
+        # 'suffix': r'(?P<suffix>[A-Za-z0-9]+)?',
+        # 'ext': r'(?P<extension>\.[A-Za-z0-9.]+)?',
     }
 
 
-class BidsSeries:
+# class BidsSeries:
 
-    def __init__(self, file_path: Path):
+#     def __init__(self, file_path: Path):
 
 
 
@@ -268,14 +274,18 @@ def read_dataset(
 
 #     return
 
-
-def read_raw_bids(dataset_path: Path, dataset_id: int, bc: BidsConvention):
+from tigrqc.models import Timepoint, Attempt, Series, SubjectDir, File, InvalidData
+def read_raw_bids(dataset_path: Path, dataset_id: int, study_id: str, bc: BidsConvention):
     """A test function read in a bids dataset of raw data.
     """
     # Should maybe have handling here in case the dataset path no longer
     # exists when the read is run (like moved or archived or deleted since
     # first added to DB)
 
+    # Replace input args with a dataset / datadir (refs to args must update)
+    # Figure out where / how to add site validation
+
+    # Dataset path is a directory of bids folders in this case
     for item in dataset_path.iterdir():
         if not item.is_dir():
             continue
@@ -286,9 +296,17 @@ def read_raw_bids(dataset_path: Path, dataset_id: int, bc: BidsConvention):
         parsed_id = bc.parse_id(item.name)
 
         if not parsed_id:
-            bad_subdir = InvalidDataDir(
-                dataset_id=dataset_id,
-                subdir=item.name
+            # Update table or re-add to model
+            # bad_subdir = InvalidDataDir(
+            #     dataset_id=dataset_id,
+            #     subdir=item.name
+            # )
+
+            # Need to update this to reflect a dataset is now a collection
+            # of directories
+            bad_subdir = InvalidData(
+                sourcedir_id=dataset_id,
+                rel_path=item.name,
             )
             # May want to handle exceptions here
             bad_subdir.save()
@@ -325,21 +343,31 @@ def read_raw_bids(dataset_path: Path, dataset_id: int, bc: BidsConvention):
         site = parsed_id.group('site') if 'site' in parsed_id.groupdict() else ''
         subid = parsed_id.group('id') if 'id' in parsed_id.groupdict() else parsed_id.group('subid')
 
-        parsed_dir = {}
-        for nifti in item.rglob('*.nii*'):
-            # parent.parent will either be sub- or ses- or a mistake
-            session_id = bc.regexes['session'].match(nifti.parent.parent.name)
+        if study and study != study_id:
+            # Failed study code validation, so report it.
+            bad_subdir = InvalidData(
+                sourcedir_id=dataset_id,
+                rel_path=item.name,
+            )
+            # May want to handle exceptions here
+            bad_subdir.save()
+            continue
 
-            if session_id:
-                session = session_id.group('timepoint')
-            elif nifti.parent.parent == item:
-                # No ses-, valid bids and means session = 1
-                session = '01'
-            else:
-                parsed_dir.setdefault('invalid', []).append(nifti)
-                continue
+        # parsed_dir = {}
+        # for nifti in item.rglob('*.nii*'):
+        #     # parent.parent will either be sub- or ses- or a mistake
+        #     session_id = bc.regexes['session'].match(nifti.parent.parent.name)
 
-            parsed_dir.setdefault(session, {}).setdefault(nifti.parent.name, []).append(nifti)
+        #     if session_id:
+        #         session = session_id.group('timepoint')
+        #     elif nifti.parent.parent == item:
+        #         # No ses-, valid bids and means session = 1
+        #         session = '01'
+        #     else:
+        #         parsed_dir.setdefault('invalid', []).append(nifti)
+        #         continue
+
+        #     parsed_dir.setdefault(session, {}).setdefault(nifti.parent.name, []).append(nifti)
 
         invalid_subdirs = []
         for nifti in item.rglob('*.nii*'):
@@ -365,20 +393,12 @@ def read_raw_bids(dataset_path: Path, dataset_id: int, bc: BidsConvention):
                 invalid_subdirs.append(nifti.parent.parent)
                 continue
 
+            # Need somewhere to store this / translate to a 'type'
+            # Or can it be abandoned if dash isn't generating things?
+            # validation worth while?
             modality = nifti.parent.name
 
 
-            if nifti.parent.parent == item:
-                # Catch instances where the optional ses- dir has been omitted
-                session = '01'
-            else:
-                # Clean this up
-                sess_id = bc.regexes['session'].match(nifti.parent.parent.name)
-                if not sess_id:
-                    # Parent of modality isn't the sub folder and its not a
-                    # recognizable ses- folder. So... I guess block qc
-                    # of niftis until it's fixed. Report the directory.
-                    invalid_subdirs.add(nifti.parent.parent)
 
 
 
@@ -407,7 +427,222 @@ def read_raw_bids(dataset_path: Path, dataset_id: int, bc: BidsConvention):
 
 
 
+# Dataset:
+#   - Belongs to a project
+#   - Has 1+ source dirs
+#   - Has a type (raw data, qc metrics, pipeline data, etc.)
+#   - Aggregate the invalid and valid dirs? Later.
+
+# Source dir
+#   - Has a path
+#   - Has a name scheme (bids, nii, kcni)
+#   - Has valid subject dirs
+#   - Has invalid dirs
+
+# Subject dir
+#   - timepoint_id (what it represents)
+#   - sourcedir_id (what dir it belongs to)
+#   - dirname (The rel path for it within source dir)
+#   - Has valid files
+#   - Has invalid files
+
+# File
+#   - series_id (What it represents)
+#   - subdir_id (what dir it belongs to)
+#   - rel_path (the path for it within its dir)
+#   - file_type (how it can be used)
+#   - [future] contents? (i.e. for json and csv?)
+
+# InvalidData
+#   - sourcedir_id (The dir it belongs to)
+#   - timepoint_id (Optional, if unset it's invalid at subdir level otherwise nested)
+#   - rel_path (path to it within source)
+#   - ignore (whether to stop reporting it)
+
+def test_bids_load(
+        source_path: Path, bc: BidsConvention, project_id: str = 'PREDICTS',
+        sourcedir_id: int = 1, site_id: str = 'CMH',
+        study_code: str | None = None, site_code: str | None = None,
+    ):
+    # Update input args to take a source_dir, etc. rather than individual args
+
+    for subject_dir in source_path.iterdir():
+        if not subject_dir.is_dir():
+            # Ignore top level non-dirs for now
+            continue
+
+        parsed_id = bc.parse_id(subject_dir.name)
+
+        if not parsed_id:
+            # Invalid subject dir, so report it. Possibly need a 'already exists'
+            # type check before saving here
+            # This might falsely report PHA data as invalid (oops)
+            invalid_subdir = InvalidData(
+                sourcedir_id=sourcedir_id,
+                rel_path=subject_dir.name,
+            )
+            invalid_subdir.save()
+            continue
+
+        # This is where code validation happens. Maybe need a 'reason' col
+        # so the rejection reason can be reported here and above.
+        study = parsed_id.group('study') if 'study' in parsed_id.groupdict() else ''
+        site = parsed_id.group('site') if 'site' in parsed_id.groupdict() else ''
+        subid = parsed_id.group('id') if 'id' in parsed_id.groupdict() else parsed_id.group('subid')
+
+        if study_code and study:
+            if study != study_code:
+                # Failed study code validation. Report.
+                invalid_subdir = InvalidData(
+                    sourcedir_id=sourcedir_id,
+                    rel_path=subject_dir.name,
+                )
+                invalid_subdir.save()
+                continue
+
+        if site_code and site:
+            if site != site_code:
+                # Failed site code validation. Report.
+                invalid_subdir = InvalidData(
+                    sourcedir_id=sourcedir_id,
+                    rel_path=subject_dir.name,
+                )
+                invalid_subdir.save()
+                continue
+
+        if not subid:
+            # No readable subid. Report.
+            invalid_subdir = InvalidData(
+                sourcedir_id=sourcedir_id,
+                rel_path=subject_dir.name,
+            )
+            invalid_subdir.save()
+            continue
+
+        # Get session num and phantom info first.
+        # Sigh. Need to account for PHA data... (match PHA string
+        # in bids (?) ID +/- read it from the source dir table if they're
+        # kept separate...)
+
+        # How to report an empty timepoint dir? Ignoring seems bad.
+
+        # All immediate dir children should either be ses-XX format OR
+        # modality. Validate modalities if you can.
+        children = {
+            'session': [],
+            'other': [],
+        }
+        for child in subject_dir.iterdir():
+            if not child.is_dir():
+                # Some files allowed in bids sub-XXXX dir, ignore
+                continue
+            session_id = bc.regexes['session'].match(child.name)
+            if not session_id:
+                children['other'].append(child)
+            else:
+                children['session'].append(
+                    (child, session_id.group('timepoint'))
+                )
+
+        if len(children['session']) > 0 and len(children['other']) > 0:
+            # Better option: Maybe parse the 'ses-' dirs and ignore the 'other'
+            # and report the 'other' so they can be fixed/ignored
+            #   -> This would still be invalid bids. But would prevent
+            #       the problem where a previously added correct sess
+            #       gets 'lost' because of a later added bad one?
+            #       is this even an issue though?
+
+            # Subject dir contains a mix of session and modality/other dirs
+            # report the issue. Attach the error to the subject dir
+            # since it affects multiple child dirs inside it.
+            invalid_subdir = InvalidData(
+                sourcedir_id=sourcedir_id,
+                rel_path=subject_dir.name,
+            )
+            invalid_subdir.save()
+            continue
+
+        if len(children['other']) > 0:
+            # Set default session/num == '01'
+            # Make a timepoint for it.
+            # Validate the modalities present in the list, if possible
+            # then parse with a general 'bids session parser' func'
+            continue
+
+        for sess_dir, num in children['session']:
+            # Retrieve if already exists.
+            timepoint = Timepoint(
+                project_id=project_id,
+                site_id=site_id,
+                subject_id=subid,
+                num=num,
+            )
+            timepoint.save()
+
+            # Retrieve if already exists
+            new_subdir = SubjectDir(
+                timepoint_id=timepoint.id,
+                sourcedir_id=sourcedir_id,
+                dirname=subject_dir.name,
+            )
+            new_subdir.save()
+
+            # Validate modality here if possible +/- save it somewhere if need
+            for nifti in sess_dir.rglob('*.nii*'):
+                # Update the BC to handle file names and validate sub/sess/etc.?
+                # fname = bc.regexes['file'].match(nifti.name)
+
+                # Get sidecar
+                # Need error correction:
+                #   No such file / unreadable file / invalid json
+                json_path = nifti.parent / (strip_suffixes(nifti) + '.json')
+                sidecar = json.loads(json_path.read_text())
+
+                ##### Handle bvec / bval here if they exist
+                ##### general func to take ext and get from nifti
+
+                # Needed info from sidecar
+                # Need error handling (fail if fields are missing?)
+                series_num = sidecar['SeriesNumber']
+                description = sidecar['SeriesDescription']
+                # No fail, if missing
+                repeat_num = sidecar.get('Repeat', '01')
+
+                # Retrieve if exists
+                attempt = Attempt(
+                    timepoint_id=timepoint.id,
+                    num=repeat_num,
+                )
+                attempt.save()
+
+                # Also retrieve if exists
+                series = Series(
+                    attempt_id=attempt.id,
+                    num=series_num,
+                    description=description,
+                )
+                series.save()
+
+                # Retrieve these if they don't exist
+                nifti_file = File(
+                    subdir_id=new_subdir.id,
+                    series_id=series.id,
+                    rel_path=nifti.relative_to(sess_dir),
+                    file_type='nifti',
+                )
+                nifti_file.save()
+                json_file = File(
+                    subdir_id=new_subdir.id,
+                    series_id=series.id,
+                    rel_path=json_path.relative_to(sess_dir),
+                    file_type='json',
+                )
+                json_file.save()
 
 
+def strip_suffixes(path: Path) -> str:
+    """Get the basename for a file with all suffixes stripped off.
+    """
+    return path.name.removesuffix(''.join(path.suffixes))
 
 
