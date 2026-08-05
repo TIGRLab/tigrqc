@@ -8,7 +8,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from sqlalchemy import (Boolean, DateTime, Enum, ForeignKey, Integer, String,
+from sqlalchemy import (Boolean, DateTime, Enum, ForeignKey,
+                        ForeignKeyConstraint, Integer, String,
                         UniqueConstraint, func)
 from sqlalchemy.orm import (Mapped, attribute_keyed_dict, mapped_column,
                             relationship)
@@ -20,7 +21,7 @@ from tigrqc.models.types import PaddedNumType, PathType
 if TYPE_CHECKING:
     from flask_sqlalchemy.model import Model
 
-    from tigrqc.models.project import Project, Site
+    from tigrqc.models.project import Project, Site, ProjectSite
 else:
     Model = db.Model
 
@@ -65,160 +66,6 @@ class Dataset(TableMixin, Model):
     )
 
 
-# This is a place-holder until I actually add the name-convention management
-# classes.
-class NameScheme(TableMixin, Model):
-    """Lists valid naming conventions that data collections can use.
-    """
-    __tablename__ = 'name_schemes'
-    id: Mapped[str] = mapped_column(String(12), primary_key=True)
-    description: Mapped[str] = mapped_column(String(60))
-
-
-# Also a placeholder
-class DatasetType(TableMixin, Model):
-    """The category a dataset falls into. Changes how it's displayed, etc.
-    """
-    __tablename__ = 'dataset_types'
-    id: Mapped[str] = mapped_column(String(12), primary_key=True)
-    description: Mapped[str] = mapped_column(String(60))
-
-
-# DM: STUDY, SITE, SUBID, TIMEPOINT, REPEAT
-# KCNI: STUDY, SITE, SUBID, TIMEPOINT, REPEAT, MODALITY
-# BIDS: (optional) SITE, SUBID, nested TIMEPOINT
-
-
-class Timepoint(TableMixin, Model):
-    """bids sess == our timepoint.
-
-    Right now this only allows one study per timepoint and doesn't validate
-    that the site code is one 'allowed' by the current study. Also doesn't
-    allow a null site (which could be problematic for some bids data.)
-    """
-    __tablename__ = 'timepoints'
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    project_id: Mapped[str] = mapped_column(
-        String(32),
-        ForeignKey('projects.id', ondelete='CASCADE'),
-        nullable=False,
-    )
-    site_id: Mapped[str] = mapped_column(
-        String(32),
-        ForeignKey('sites.id', ondelete='CASCADE'),
-        nullable=False,
-    )
-    subject_id: Mapped[str] = mapped_column(String(32), nullable=False)
-    num: Mapped[str] = mapped_column(PaddedNumType(width=2), nullable=False)
-    is_phantom: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False
-    )
-
-    # subject, num should be unique pairing
-    # project/site/subject should be unique tuple
-
-    # project: Mapped['Project'] = relationship(
-    #     'Project', back_populates='timepoints'
-    # )
-    # site: Mapped['Site'] = relationship(
-    #     'Site', back_populates='timepoints'
-    # )
-    attempts: Mapped[dict[str, 'Attempt']] = relationship(
-        'Attempt',
-        back_populates='parent',
-        collection_class=attribute_keyed_dict('num'),
-        cascade='all, delete',
-        passive_deletes=True,
-    )
-
-
-class Attempt(TableMixin, Model):
-    """Equiv to old dashboard's 'sessions' / Erin's concept of 'repeat'.
-
-    Renamed to avoid bids convention name collision.
-
-    If the scanner stops and restarts during a timepoint, then the 'attempt'
-    increments by one.
-    """
-    __tablename__ = 'attempts'
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    timepoint_id: Mapped[int] = mapped_column(
-        Integer,
-        ForeignKey('timepoints.id', ondelete='CASCADE'),
-        nullable=False,
-    )
-    num: Mapped[str] = mapped_column(PaddedNumType(width=2), nullable=False)
-    # Not readily available from sidecars
-    scan_date: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-    )
-
-    parent: Mapped['Timepoint'] = relationship(
-        'Timepoint',
-        back_populates='attempts',
-    )
-    scans: Mapped['Series'] = relationship(
-        'Series',
-        back_populates='parent',
-        cascade='all, delete',
-        passive_deletes=True,
-        order_by='Series.num',
-    )
-
-
-class Series(TableMixin, Model):
-    """Equiv to old dashboard's 'scan'. Renamed for clarity.
-    """
-    __tablename__ = 'series'
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    attempt_id: Mapped[int] = mapped_column(
-        Integer,
-        ForeignKey('attempts.id', ondelete='CASCADE'),
-        nullable=False,
-    )
-    # Double check that this can handle series num > 2 digit
-    num: Mapped[int] = mapped_column(
-        PaddedNumType(width=2), nullable=False
-    )
-    # Dicom header character limit
-    description: Mapped[int] = mapped_column(String(64), nullable=False)
-
-    parent: Mapped['Attempt'] = relationship(
-        'Attempt',
-        back_populates='scans',
-    )
-
-
-# class InvalidDataDir(TableMixin, Model):
-#     """Handles subdirs that don't conform to the expected name scheme.
-
-#     If a subdirectory exists in a dataset it _might_ be something to ignore
-#     or it could be misnamed subject data. This tracks these directories
-#     so they can be reported to users or intentionally ignored.
-#     """
-#     __tablename__ = 'invalid_dataset_dirs'
-
-#     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-#     dataset_id: Mapped[int] = mapped_column(
-#         Integer,
-#         ForeignKey('datasets.id', ondelete='CASCADE'),
-#         nullable=False
-#     )
-#     dirname: Mapped[str] = mapped_column(String(255), nullable=False)
-#     ignore: Mapped[bool] = mapped_column(
-#         Boolean, default=False, nullable=False
-#     )
-
-#     dataset: Mapped['Dataset'] = relationship(
-#         'Dataset', back_populates='invalid_dirs'
-#     )
-
-
-
 class SourceDir(TableMixin, Model):
     """An input directory of data.
 
@@ -251,16 +98,26 @@ class SourceDir(TableMixin, Model):
         nullable=False,
     )
 
-    __table_args__ = (
-        UniqueConstraint('path', name='unique_source_dir_path'),
-    )
-
     dataset: Mapped['Dataset'] = relationship(
         'Dataset',
         back_populates='source_dirs',
     )
-    # SubjectDir
-    # InvalidDir (those without timepoint_id)
+    subject_dirs: Mapped[list['SubjectDir']] = relationship(
+        'SubjectDir',
+        back_populates='parent',
+        cascade='all, delete-orphan',
+        passive_deletes=True,
+    )
+    invalid_children: Mapped[list['InvalidData']] = relationship(
+        'InvalidData',
+        back_populates='parent',
+        cascade='all, delete-orphan',
+        passive_deletes=True,
+    )
+
+    __table_args__ = (
+        UniqueConstraint('path', name='uq_source_dir_path'),
+    )
 
 
 class SubjectDir(TableMixin, Model):
@@ -281,9 +138,20 @@ class SubjectDir(TableMixin, Model):
     )
     dirname: Mapped[str] = mapped_column(String(255), nullable=False)
 
-    # timepoint rel
-    # source_dir parent rel
-    # files rel
+    timepoint: Mapped['Timepoint'] = relationship(
+        'Timepoint',
+        back_populates='data_dirs',
+    )
+    parent: Mapped['SourceDir'] = relationship(
+        'SourceDir',
+        back_populates='subject_dirs',
+    )
+    children: Mapped[list['File']] = relationship(
+        'File',
+        back_populates='parent',
+        cascade='all, delete-orphan',
+        passive_deletes=True,
+    )
 
     __table_args__ = (
         UniqueConstraint(
@@ -291,7 +159,13 @@ class SubjectDir(TableMixin, Model):
             'dirname',
             name='uq_subject_dir_path',
         ),
+        UniqueConstraint(
+            'timepoint_id',
+            'sourcedir_id',
+            name='uq_subject_dir_timepoint_id_sourcedir_id',
+        ),
     )
+
 
 # This probably needs to be a table with regexes (so you can auto ingest
 #   .nii.gz, or *.pdf etc?) But maybe that's better handled in app.
@@ -336,9 +210,14 @@ class File(TableMixin, Model):
     # size (bytes)?
     # checksum?
 
-    # subdir parent rel
-    # series rel
-    # later - QC records rel (unless assoc table joined straight on Series?)
+    parent: Mapped['SubjectDir'] = relationship(
+        'SubjectDir',
+        back_populates='children',
+    )
+    series: Mapped['Series'] = relationship(
+        'Series',
+        back_populates='files',
+    )
 
     # I think I need another constraint here to avoid more than one nifti
     # for a single series (i.e. duplicates copies...)
@@ -378,11 +257,233 @@ class InvalidData(TableMixin, Model):
         nullable=False,
     )
 
-    # sourcedir parent rel
-    # IF timepoint, rel should exist between.
+    parent: Mapped['SourceDir'] = relationship(
+        'SourceDir',
+        back_populates='invalid_children',
+    )
+    timepoint: Mapped['Timepoint'] = relationship(
+        'Timepoint',
+        back_populates='invalid_contents',
+    )
 
     __table_args__ = (
         UniqueConstraint(
             'sourcedir_id', 'rel_path', name='uq_invalid_data_path',
         ),
     )
+
+
+# This is a place-holder until I actually add the name-convention management
+# classes.
+class NameScheme(TableMixin, Model):
+    """Lists valid naming conventions that data collections can use.
+    """
+    __tablename__ = 'name_schemes'
+    id: Mapped[str] = mapped_column(String(12), primary_key=True)
+    description: Mapped[str] = mapped_column(String(60))
+
+
+# Also a placeholder
+class DatasetType(TableMixin, Model):
+    """The category a dataset falls into. Changes how it's displayed, etc.
+    """
+    __tablename__ = 'dataset_types'
+    id: Mapped[str] = mapped_column(String(12), primary_key=True)
+    description: Mapped[str] = mapped_column(String(60))
+
+
+# DM: STUDY, SITE, SUBID, TIMEPOINT, REPEAT
+# KCNI: STUDY, SITE, SUBID, TIMEPOINT, REPEAT, MODALITY
+# BIDS: (optional) SITE, SUBID, nested TIMEPOINT
+
+
+class Timepoint(TableMixin, Model):
+    """bids sess == our timepoint.
+
+    Right now this only allows one study per timepoint and doesn't validate
+    that the site code is one 'allowed' by the current study. Also doesn't
+    allow a null site (which could be problematic for some bids data.)
+    """
+    __tablename__ = 'timepoints'
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+    )
+    site_id: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+    )
+    subject_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    num: Mapped[str] = mapped_column(PaddedNumType(width=2), nullable=False)
+    is_phantom: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
+
+    project: Mapped['Project'] = relationship(
+        'Project',
+        back_populates='timepoints',
+        viewonly=True,
+    )
+    site: Mapped['Site'] = relationship(
+        'Site',
+        back_populates='timepoints',
+        viewonly=True,
+    )
+    project_site: Mapped['ProjectSite'] = relationship(
+        'ProjectSite',
+        back_populates='timepoints',
+    )
+    attempts: Mapped[dict[str, 'Attempt']] = relationship(
+        'Attempt',
+        back_populates='parent',
+        collection_class=attribute_keyed_dict('num'),
+        cascade='all, delete-orphan',
+        passive_deletes=True,
+    )
+    data_dirs: Mapped[list['SubjectDir']] = relationship(
+        'SubjectDir',
+        back_populates='timepoint',
+        cascade='all, delete-orphan',
+        passive_deletes=True,
+    )
+    invalid_contents: Mapped[list['InvalidData']] = relationship(
+        'InvalidData',
+        back_populates='timepoint',
+        cascade='all, delete-orphan',
+        passive_deletes=True,
+    )
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ['project_id', 'site_id'],
+            ['project_sites.project_id', 'project_sites.site_id'],
+            name='fk_timepoint_on_project_site',
+            ondelete='CASCADE',
+        ),
+        UniqueConstraint(
+            'subject_id',
+            'num',
+            name='uq_timepoint_subject_id_num',
+        ),
+        UniqueConstraint(
+            'project_id',
+            'site_id',
+            'subject_id',
+            name='uq_timepoint_project_site_subject',
+        )
+    )
+
+
+class Attempt(TableMixin, Model):
+    """Equiv to old dashboard's 'sessions' / Erin's concept of 'repeat'.
+
+    Renamed to avoid bids convention name collision.
+
+    If the scanner stops and restarts during a timepoint, then the 'attempt'
+    increments by one.
+    """
+    __tablename__ = 'attempts'
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    timepoint_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey('timepoints.id', ondelete='CASCADE'),
+        nullable=False,
+    )
+    num: Mapped[str] = mapped_column(PaddedNumType(width=2), nullable=False)
+    # Not readily available from sidecars
+    scan_date: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    parent: Mapped['Timepoint'] = relationship(
+        'Timepoint',
+        back_populates='attempts',
+    )
+    scans: Mapped[list['Series']] = relationship(
+        'Series',
+        back_populates='parent',
+        cascade='all, delete',
+        passive_deletes=True,
+        order_by='Series.num',
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            'timepoint_id',
+            'num',
+            name='uq_attempt_timepoint_num',
+        ),
+    )
+
+
+class Series(TableMixin, Model):
+    """Equiv to old dashboard's 'scan'. Renamed for clarity.
+    """
+    __tablename__ = 'series'
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    attempt_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey('attempts.id', ondelete='CASCADE'),
+        nullable=False,
+    )
+    # Double check that this can handle series num > 2 digit
+    num: Mapped[int] = mapped_column(
+        PaddedNumType(width=2), nullable=False
+    )
+    # Dicom header character limit
+    description: Mapped[int] = mapped_column(String(64), nullable=False)
+
+    parent: Mapped['Attempt'] = relationship(
+        'Attempt',
+        back_populates='scans',
+    )
+    files: Mapped[list['File']] = relationship(
+        'File',
+        back_populates='series',
+        cascade='all, delete-orphan',
+        passive_deletes=True,
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            'attempt_id',
+            'num',
+            name='uq_attempt_series_num',
+        ),
+    )
+
+
+# class InvalidDataDir(TableMixin, Model):
+#     """Handles subdirs that don't conform to the expected name scheme.
+
+#     If a subdirectory exists in a dataset it _might_ be something to ignore
+#     or it could be misnamed subject data. This tracks these directories
+#     so they can be reported to users or intentionally ignored.
+#     """
+#     __tablename__ = 'invalid_dataset_dirs'
+
+#     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+#     dataset_id: Mapped[int] = mapped_column(
+#         Integer,
+#         ForeignKey('datasets.id', ondelete='CASCADE'),
+#         nullable=False
+#     )
+#     dirname: Mapped[str] = mapped_column(String(255), nullable=False)
+#     ignore: Mapped[bool] = mapped_column(
+#         Boolean, default=False, nullable=False
+#     )
+
+#     dataset: Mapped['Dataset'] = relationship(
+#         'Dataset', back_populates='invalid_dirs'
+#     )
+
+
+
+
+
+

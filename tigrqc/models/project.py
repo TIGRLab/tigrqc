@@ -15,7 +15,7 @@ from tigrqc.models.types import PathType
 if TYPE_CHECKING:
     from flask_sqlalchemy.model import Model
 
-    from tigrqc.models.dataset import Dataset
+    from tigrqc.models.dataset import Dataset, Timepoint
 else:
     Model = db.Model
 
@@ -60,6 +60,11 @@ class Project(TableMixin, Model):
         back_populates='project',
         cascade='all, delete',
         passive_deletes=True,
+    )
+    timepoints: Mapped[list['Timepoint']] = relationship(
+        'Timepoint',
+        back_populates='project',
+        viewonly=True,
     )
 
     def __repr__(self) -> str:
@@ -121,8 +126,13 @@ class Site(TableMixin, Model):
         'ProjectSite',
         back_populates='site',
         collection_class=attribute_keyed_dict('project_id'),
-        cascade='all, delete',
+        cascade='all, delete-orphan',
         passive_deletes=True,
+    )
+    timepoints: Mapped[list['Timepoint']] = relationship(
+        'Timepoint',
+        back_populates='site',
+        viewonly=True,
     )
 
     @property
@@ -165,9 +175,19 @@ class ProjectSite(TableMixin, Model):
     )
 
     project: Mapped['Project'] = relationship(
-        'Project', back_populates='sites'
+        'Project',
+        back_populates='sites',
     )
-    site: Mapped['Site'] = relationship('Site', back_populates='projects')
+    site: Mapped['Site'] = relationship(
+        'Site',
+        back_populates='projects',
+    )
+    timepoints: Mapped[list['Timepoint']] = relationship(
+        'Timepoint',
+        back_populates='project_site',
+        cascade='all, delete-orphan',
+        passive_deletes=True,
+    )
 
     def __repr__(self):
         return f'<ProjectSite {self.project_id} - {self.site_id}>'
