@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, ForeignKey, String, Text
+from sqlalchemy.ext.associationproxy import AssociationProxy, association_proxy
 from sqlalchemy.orm import (Mapped, attribute_keyed_dict, mapped_column,
                             relationship, validates)
 
@@ -61,10 +62,14 @@ class Project(TableMixin, Model):
         cascade='all, delete',
         passive_deletes=True,
     )
-    timepoints: Mapped[list['Timepoint']] = relationship(
+    # timepoints: Mapped[list['Timepoint']] = relationship(
+    #     'Timepoint',
+    #     back_populates='project',
+    #     viewonly=True,
+    # )
+    timepoints: AssociationProxy[list['Timepoint']] = association_proxy(
+        'ProjectSite',
         'Timepoint',
-        back_populates='project',
-        viewonly=True,
     )
 
     def __repr__(self) -> str:
@@ -129,10 +134,14 @@ class Site(TableMixin, Model):
         cascade='all, delete-orphan',
         passive_deletes=True,
     )
-    timepoints: Mapped[list['Timepoint']] = relationship(
+    # timepoints: Mapped[list['Timepoint']] = relationship(
+    #     'Timepoint',
+    #     back_populates='site',
+    #     viewonly=True,
+    # )
+    timepoints: AssociationProxy[list['Timepoint']] = association_proxy(
+        'ProjectSite',
         'Timepoint',
-        back_populates='site',
-        viewonly=True,
     )
 
     @property

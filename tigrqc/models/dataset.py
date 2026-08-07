@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import (Boolean, DateTime, Enum, ForeignKey,
                         ForeignKeyConstraint, Integer, String,
                         UniqueConstraint, func)
+from sqlalchemy.ext.associationproxy import AssociationProxy, association_proxy
 from sqlalchemy.orm import (Mapped, attribute_keyed_dict, mapped_column,
                             relationship)
 
@@ -21,7 +22,7 @@ from tigrqc.models.types import PaddedNumType, PathType
 if TYPE_CHECKING:
     from flask_sqlalchemy.model import Model
 
-    from tigrqc.models.project import Project, Site, ProjectSite
+    from tigrqc.models.project import Project, ProjectSite, Site
 else:
     Model = db.Model
 
@@ -88,13 +89,13 @@ class SourceDir(TableMixin, Model):
     )
     created: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        server_default=func.now(),
+        server_default=func.now(),  # pylint: disable=not-callable
         nullable=False,
     )
     last_read: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        server_default=func.now(),
-        onupdate=func.now(),
+        server_default=func.now(),  # pylint: disable=not-callable
+        onupdate=func.now(),  # pylint: disable=not-callable
         nullable=False,
     )
 
@@ -171,11 +172,11 @@ class SubjectDir(TableMixin, Model):
 #   .nii.gz, or *.pdf etc?) But maybe that's better handled in app.
 # Complicates migrations also... Maybe it should be a table.
 class FileType(str, enum.Enum):
-    NIFTI = "nifti"
-    JSON = "json"
-    BVEC = "bvec"
-    BVAL = "bval"
-    TECH_NOTES = "tech_notes"
+    NIFTI = 'nifti'
+    JSON = 'json'
+    BVEC = 'bvec'
+    BVAL = 'bval'
+    TECH_NOTES = 'tech_notes'
 
 
 # This might need to be reworked... raw niftis are special and json data
@@ -321,40 +322,6 @@ class Timepoint(TableMixin, Model):
         Boolean, default=False, nullable=False
     )
 
-    project: Mapped['Project'] = relationship(
-        'Project',
-        back_populates='timepoints',
-        viewonly=True,
-    )
-    site: Mapped['Site'] = relationship(
-        'Site',
-        back_populates='timepoints',
-        viewonly=True,
-    )
-    project_site: Mapped['ProjectSite'] = relationship(
-        'ProjectSite',
-        back_populates='timepoints',
-    )
-    attempts: Mapped[dict[str, 'Attempt']] = relationship(
-        'Attempt',
-        back_populates='parent',
-        collection_class=attribute_keyed_dict('num'),
-        cascade='all, delete-orphan',
-        passive_deletes=True,
-    )
-    data_dirs: Mapped[list['SubjectDir']] = relationship(
-        'SubjectDir',
-        back_populates='timepoint',
-        cascade='all, delete-orphan',
-        passive_deletes=True,
-    )
-    invalid_contents: Mapped[list['InvalidData']] = relationship(
-        'InvalidData',
-        back_populates='timepoint',
-        cascade='all, delete-orphan',
-        passive_deletes=True,
-    )
-
     __table_args__ = (
         ForeignKeyConstraint(
             ['project_id', 'site_id'],
@@ -373,6 +340,34 @@ class Timepoint(TableMixin, Model):
             'subject_id',
             name='uq_timepoint_project_site_subject',
         )
+    )
+
+    project_site: Mapped['ProjectSite'] = relationship(
+        'ProjectSite',
+        back_populates='timepoints',
+    )
+    project: AssociationProxy['Project'] = association_proxy(
+        'ProjectSite', 'Project'
+    )
+    site: AssociationProxy['Site'] = association_proxy('ProjectSite', 'Site')
+    attempts: Mapped[dict[str, 'Attempt']] = relationship(
+        'Attempt',
+        back_populates='parent',
+        collection_class=attribute_keyed_dict('num'),
+        cascade='all, delete-orphan',
+        passive_deletes=True,
+    )
+    data_dirs: Mapped[list['SubjectDir']] = relationship(
+        'SubjectDir',
+        back_populates='timepoint',
+        cascade='all, delete-orphan',
+        passive_deletes=True,
+    )
+    invalid_contents: Mapped[list['InvalidData']] = relationship(
+        'InvalidData',
+        back_populates='timepoint',
+        cascade='all, delete-orphan',
+        passive_deletes=True,
     )
 
 
@@ -481,9 +476,3 @@ class Series(TableMixin, Model):
 #     dataset: Mapped['Dataset'] = relationship(
 #         'Dataset', back_populates='invalid_dirs'
 #     )
-
-
-
-
-
-
