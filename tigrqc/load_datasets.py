@@ -10,6 +10,7 @@ from pathlib import Path
 
 from tigrqc.exceptions import TigrQcException
 # from tigrqc.models import InvalidDataDir
+from tigrqc.models import get_or_create
 
 # To do:
 #   - Implement overrides of templates + patterns (but must constraint it to
@@ -37,8 +38,6 @@ from tigrqc.exceptions import TigrQcException
 #     fields: dict
 #     valid: bool
 #     errors: list = field(default_factory=list)
-
-
 
 
 
@@ -459,7 +458,9 @@ def read_raw_bids(dataset_path: Path, dataset_id: int, study_id: str, bc: BidsCo
 #   - rel_path (path to it within source)
 #   - ignore (whether to stop reporting it)
 
+from flask_sqlalchemy import SQLAlchemy
 def test_bids_load(
+        db: SQLAlchemy,
         source_path: Path, bc: BidsConvention, project_id: str = 'PREDICTS',
         sourcedir_id: int = 1, site_id: str = 'CMH',
         study_code: str | None = None, site_code: str | None = None,
@@ -474,14 +475,14 @@ def test_bids_load(
         parsed_id = bc.parse_id(subject_dir.name)
 
         if not parsed_id:
-            # Invalid subject dir, so report it. Possibly need a 'already exists'
-            # type check before saving here
-            # This might falsely report PHA data as invalid (oops)
-            invalid_subdir = InvalidData(
+            # Relying on parsing like this might falsely report PHA data as
+            # invalid (oops). Gotta fix it.
+            get_or_create(
+                db.session,
+                InvalidData,
                 sourcedir_id=sourcedir_id,
                 rel_path=subject_dir.name,
             )
-            invalid_subdir.save()
             continue
 
         # This is where code validation happens. Maybe need a 'reason' col
@@ -490,33 +491,34 @@ def test_bids_load(
         site = parsed_id.group('site') if 'site' in parsed_id.groupdict() else ''
         subid = parsed_id.group('id') if 'id' in parsed_id.groupdict() else parsed_id.group('subid')
 
-        if study_code and study:
-            if study != study_code:
-                # Failed study code validation. Report.
-                invalid_subdir = InvalidData(
-                    sourcedir_id=sourcedir_id,
-                    rel_path=subject_dir.name,
-                )
-                invalid_subdir.save()
-                continue
-
-        if site_code and site:
-            if site != site_code:
-                # Failed site code validation. Report.
-                invalid_subdir = InvalidData(
-                    sourcedir_id=sourcedir_id,
-                    rel_path=subject_dir.name,
-                )
-                invalid_subdir.save()
-                continue
-
-        if not subid:
-            # No readable subid. Report.
-            invalid_subdir = InvalidData(
+        if (study_code and study) and (study != study_code):
+            # Failed study code validation. Report it.
+            get_or_create(
+                db.session,
+                InvalidData,
                 sourcedir_id=sourcedir_id,
                 rel_path=subject_dir.name,
             )
-            invalid_subdir.save()
+            continue
+
+        if (site_code and site) and (site != site_code):
+            # Failed site code validation. Report it.
+            get_or_create(
+                db.session,
+                InvalidData,
+                sourcedir_id=sourcedir_id,
+                rel_path=subject_dir.name,
+            )
+            continue
+
+        if not subid:
+            # No readable subid. Report it.
+            get_or_create(
+                db.session,
+                InvalidData,
+                sourcedir_id=sourcedir_id,
+                rel_path=subject_dir.name,
+            )
             continue
 
         # Get session num and phantom info first.
@@ -555,11 +557,12 @@ def test_bids_load(
             # Subject dir contains a mix of session and modality/other dirs
             # report the issue. Attach the error to the subject dir
             # since it affects multiple child dirs inside it.
-            invalid_subdir = InvalidData(
+            get_or_create(
+                db.session,
+                InvalidData,
                 sourcedir_id=sourcedir_id,
                 rel_path=subject_dir.name,
             )
-            invalid_subdir.save()
             continue
 
         if len(children['other']) > 0:
@@ -570,22 +573,22 @@ def test_bids_load(
             continue
 
         for sess_dir, num in children['session']:
-            # Retrieve if already exists.
-            timepoint = Timepoint(
+            timepoint, _ = get_or_create(
+                db.session,
+                Timepoint,
                 project_id=project_id,
                 site_id=site_id,
                 subject_id=subid,
                 num=num,
             )
-            timepoint.save()
 
-            # Retrieve if already exists
-            new_subdir = SubjectDir(
+            new_subdir, _ = get_or_create(
+                db.session,
+                SubjectDir,
                 timepoint_id=timepoint.id,
                 sourcedir_id=sourcedir_id,
                 dirname=subject_dir.name,
             )
-            new_subdir.save()
 
             # Validate modality here if possible +/- save it somewhere if need
             for nifti in sess_dir.rglob('*.nii*'):
@@ -608,36 +611,43 @@ def test_bids_load(
                 # No fail, if missing
                 repeat_num = sidecar.get('Repeat', '01')
 
-                # Retrieve if exists
-                attempt = Attempt(
+                attempt, _ = get_or_create(
+                    db.session,
+                    Attempt,
                     timepoint_id=timepoint.id,
                     num=repeat_num,
                 )
-                attempt.save()
 
-                # Also retrieve if exists
-                series = Series(
+                series, _ = get_or_create(
+                    db.session,
+                    Series,
                     attempt_id=attempt.id,
                     num=series_num,
-                    description=description,
+                    other_fields={
+                        'description': description,
+                    },
                 )
-                series.save()
 
-                # Retrieve these if they don't exist
-                nifti_file = File(
+                get_or_create(
+                    db.session,
+                    File,
                     subdir_id=new_subdir.id,
-                    series_id=series.id,
                     rel_path=nifti.relative_to(sess_dir),
-                    file_type='nifti',
+                    other_fields={
+                        'series_id': series.id,
+                        'file_type': 'nifti',
+                    },
                 )
-                nifti_file.save()
-                json_file = File(
+                get_or_create(
+                    db.session,
+                    File,
                     subdir_id=new_subdir.id,
-                    series_id=series.id,
                     rel_path=json_path.relative_to(sess_dir),
-                    file_type='json',
+                    other_fields={
+                        'series_id': series.id,
+                        'file_type': 'json',
+                    },
                 )
-                json_file.save()
 
 
 def strip_suffixes(path: Path) -> str:
