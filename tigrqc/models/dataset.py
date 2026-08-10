@@ -289,6 +289,10 @@ class InvalidData(TableMixin, Model):
         default=False,
         nullable=False,
     )
+    error_msg: Mapped[str] = mapped_column(
+        String(256),
+        nullable=True,
+    )
 
     parent: Mapped['SourceDir'] = relationship(
         'SourceDir',

@@ -482,6 +482,9 @@ def test_bids_load(
                 InvalidData,
                 sourcedir_id=sourcedir_id,
                 rel_path=subject_dir.name,
+                other_fields={
+                    'error_msg': 'Invalid BIDS subject ID.'
+                },
             )
             continue
 
@@ -498,6 +501,11 @@ def test_bids_load(
                 InvalidData,
                 sourcedir_id=sourcedir_id,
                 rel_path=subject_dir.name,
+                other_fields={
+                    'error_msg': (
+                        f'BIDS ID contains invalid study code {study}.'
+                    ),
+                },
             )
             continue
 
@@ -508,6 +516,11 @@ def test_bids_load(
                 InvalidData,
                 sourcedir_id=sourcedir_id,
                 rel_path=subject_dir.name,
+                other_fields={
+                    'error_msg': (
+                        f'BIDS ID contains invalid site code {site}.'
+                    ),
+                },
             )
             continue
 
@@ -518,6 +531,11 @@ def test_bids_load(
                 InvalidData,
                 sourcedir_id=sourcedir_id,
                 rel_path=subject_dir.name,
+                other_fields={
+                    'error_msg': (
+                        f'BIDS ID contains unreadable subid field.'
+                    ),
+                },
             )
             continue
 
@@ -562,6 +580,12 @@ def test_bids_load(
                 InvalidData,
                 sourcedir_id=sourcedir_id,
                 rel_path=subject_dir.name,
+                other_fields={
+                    'error_msg': (
+                        'BIDS subject dir should contain only 1) session '
+                        'dirs or 2) modality dirs. Unknown directories found.'
+                    ),
+                },
             )
             continue
 
