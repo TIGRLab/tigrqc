@@ -273,7 +273,7 @@ def read_dataset(
 
 #     return
 
-from tigrqc.models import Timepoint, Attempt, Series, SubjectDir, File, InvalidData
+from tigrqc.models import Timepoint, Attempt, Series, TimepointDir, File, InvalidData
 def read_raw_bids(dataset_path: Path, dataset_id: int, study_id: str, bc: BidsConvention):
     """A test function read in a bids dataset of raw data.
     """
@@ -584,10 +584,10 @@ def test_bids_load(
 
             new_subdir, _ = get_or_create(
                 db.session,
-                SubjectDir,
+                TimepointDir,
                 timepoint_id=timepoint.id,
                 sourcedir_id=sourcedir_id,
-                dirname=subject_dir.name,
+                dirname=sess_dir.relative_to(source_path),
             )
 
             # Validate modality here if possible +/- save it somewhere if need
