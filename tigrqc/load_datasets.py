@@ -597,81 +597,7 @@ def test_bids_load(
             continue
 
         for sess_dir, num in children['session']:
-            timepoint, _ = get_or_create(
-                db.session,
-                Timepoint,
-                project_id=project_id,
-                site_id=site_id,
-                subject_id=subid,
-                num=num,
-            )
-
-            new_subdir, _ = get_or_create(
-                db.session,
-                TimepointDir,
-                timepoint_id=timepoint.id,
-                sourcedir_id=sourcedir_id,
-                dirname=sess_dir.relative_to(source_path),
-            )
-
-            # Validate modality here if possible +/- save it somewhere if need
-            for nifti in sess_dir.rglob('*.nii*'):
-                # Update the BC to handle file names and validate sub/sess/etc.?
-                # fname = bc.regexes['file'].match(nifti.name)
-
-                # Get sidecar
-                # Need error correction:
-                #   No such file / unreadable file / invalid json
-                json_path = nifti.parent / (strip_suffixes(nifti) + '.json')
-                sidecar = json.loads(json_path.read_text())
-
-                ##### Handle bvec / bval here if they exist
-                ##### general func to take ext and get from nifti
-
-                # Needed info from sidecar
-                # Need error handling (fail if fields are missing?)
-                series_num = sidecar['SeriesNumber']
-                description = sidecar['SeriesDescription']
-                # No fail, if missing
-                repeat_num = sidecar.get('Repeat', '01')
-
-                attempt, _ = get_or_create(
-                    db.session,
-                    Attempt,
-                    timepoint_id=timepoint.id,
-                    num=repeat_num,
-                )
-
-                series, _ = get_or_create(
-                    db.session,
-                    Series,
-                    attempt_id=attempt.id,
-                    num=series_num,
-                    other_fields={
-                        'description': description,
-                    },
-                )
-
-                get_or_create(
-                    db.session,
-                    File,
-                    subdir_id=new_subdir.id,
-                    rel_path=nifti.relative_to(sess_dir),
-                    other_fields={
-                        'series_id': series.id,
-                        'file_type': 'nifti',
-                    },
-                )
-                get_or_create(
-                    db.session,
-                    File,
-                    subdir_id=new_subdir.id,
-                    rel_path=json_path.relative_to(sess_dir),
-                    other_fields={
-                        'series_id': series.id,
-                        'file_type': 'json',
-                    },
-                )
+            test_bids_sess_load(db, subid, num, sess_dir, source_path)
 
 
 def strip_suffixes(path: Path) -> str:
@@ -680,3 +606,91 @@ def strip_suffixes(path: Path) -> str:
     return path.name.removesuffix(''.join(path.suffixes))
 
 
+def test_bids_sess_load(
+        db: SQLAlchemy,
+        subid: str,
+        num: str,
+        sess_dir: Path,
+        source_path: Path,
+        sourcedir_id: int = 1,
+        project_id: str = 'PREDICTS',
+        site_id: str = 'CMH',
+):
+    """Load/refresh a single bids session.
+    """
+    timepoint, _ = get_or_create(
+        db.session,
+        Timepoint,
+        project_id=project_id,
+        site_id=site_id,
+        subject_id=subid,
+        num=num,
+    )
+
+    # Func should probably just take source_dir record
+    new_subdir, _ = get_or_create(
+        db.session,
+        TimepointDir,
+        timepoint_id=timepoint.id,
+        sourcedir_id=sourcedir_id,
+        dirname=sess_dir.relative_to(source_path),
+    )
+
+    # Validate modality here if possible +/- save it somewhere if need
+    for nifti in sess_dir.rglob('*.nii*'):
+        # Update the BC to handle file names and validate sub/sess/etc.?
+        # fname = bc.regexes['file'].match(nifti.name)
+
+        # Get sidecar
+        # Need error correction:
+        #   No such file / unreadable file / invalid json
+        json_path = nifti.parent / (strip_suffixes(nifti) + '.json')
+        sidecar = json.loads(json_path.read_text())
+
+        ##### Handle bvec / bval here if they exist
+        ##### general func to take ext and get from nifti
+
+        # Needed info from sidecar
+        # Need error handling (fail if fields are missing?)
+        series_num = sidecar['SeriesNumber']
+        description = sidecar['SeriesDescription']
+        # No fail, if missing
+        repeat_num = sidecar.get('Repeat', '01')
+
+        attempt, _ = get_or_create(
+            db.session,
+            Attempt,
+            timepoint_id=timepoint.id,
+            num=repeat_num,
+        )
+
+        series, _ = get_or_create(
+            db.session,
+            Series,
+            attempt_id=attempt.id,
+            num=series_num,
+            other_fields={
+                'description': description,
+            },
+        )
+
+        get_or_create(
+            db.session,
+            File,
+            subdir_id=new_subdir.id,
+            rel_path=nifti.relative_to(sess_dir),
+            other_fields={
+                'series_id': series.id,
+                'file_type': 'nifti',
+            },
+        )
+        get_or_create(
+            db.session,
+            File,
+            subdir_id=new_subdir.id,
+            rel_path=json_path.relative_to(sess_dir),
+            other_fields={
+                'series_id': series.id,
+                'file_type': 'json',
+            },
+        )
