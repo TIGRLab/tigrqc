@@ -103,8 +103,8 @@ class SourceDir(TableMixin, Model):
         'Dataset',
         back_populates='source_dirs',
     )
-    subject_dirs: Mapped[list['SubjectDir']] = relationship(
-        'SubjectDir',
+    timepoint_dirs: Mapped[list['TimepointDir']] = relationship(
+        'TimepointDir',
         back_populates='parent',
         cascade='all, delete-orphan',
         passive_deletes=True,
@@ -121,10 +121,10 @@ class SourceDir(TableMixin, Model):
     )
 
 
-class SubjectDir(TableMixin, Model):
-    """A subject dir from a source directory.
+class TimepointDir(TableMixin, Model):
+    """A directory containing a single timepoint from a source directory.
     """
-    __tablename__ = 'subject_dirs'
+    __tablename__ = 'timepoint_dirs'
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     timepoint_id: Mapped[int] = mapped_column(
@@ -137,7 +137,7 @@ class SubjectDir(TableMixin, Model):
         ForeignKey('source_dirs.id', ondelete='CASCADE'),
         nullable=False,
     )
-    dirname: Mapped[str] = mapped_column(String(255), nullable=False)
+    dirname: Mapped[str] = mapped_column(PathType, nullable=False)
 
     timepoint: Mapped['Timepoint'] = relationship(
         'Timepoint',
@@ -145,7 +145,7 @@ class SubjectDir(TableMixin, Model):
     )
     parent: Mapped['SourceDir'] = relationship(
         'SourceDir',
-        back_populates='subject_dirs',
+        back_populates='timepoint_dirs',
     )
     children: Mapped[list['File']] = relationship(
         'File',
@@ -158,12 +158,12 @@ class SubjectDir(TableMixin, Model):
         UniqueConstraint(
             'sourcedir_id',
             'dirname',
-            name='uq_subject_dir_path',
+            name='uq_timepoint_dir_path',
         ),
         UniqueConstraint(
             'timepoint_id',
             'sourcedir_id',
-            name='uq_subject_dir_timepoint_id_sourcedir_id',
+            name='uq_timepoint_dir_timepoint_id_sourcedir_id',
         ),
     )
 
@@ -189,7 +189,7 @@ class File(TableMixin, Model):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     subdir_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey('subject_dirs.id', ondelete='CASCADE'),
+        ForeignKey('timepoint_dirs.id', ondelete='CASCADE'),
         nullable=False,
     )
     series_id: Mapped[int] = mapped_column(
@@ -211,8 +211,8 @@ class File(TableMixin, Model):
     # size (bytes)?
     # checksum?
 
-    parent: Mapped['SubjectDir'] = relationship(
-        'SubjectDir',
+    parent: Mapped['TimepointDir'] = relationship(
+        'TimepointDir',
         back_populates='children',
     )
     series: Mapped['Series'] = relationship(
@@ -338,7 +338,8 @@ class Timepoint(TableMixin, Model):
             'project_id',
             'site_id',
             'subject_id',
-            name='uq_timepoint_project_site_subject',
+            'num',
+            name='uq_timepoint_project_site_subject_num',
         )
     )
 
@@ -357,8 +358,8 @@ class Timepoint(TableMixin, Model):
         cascade='all, delete-orphan',
         passive_deletes=True,
     )
-    data_dirs: Mapped[list['SubjectDir']] = relationship(
-        'SubjectDir',
+    data_dirs: Mapped[list['TimepointDir']] = relationship(
+        'TimepointDir',
         back_populates='timepoint',
         cascade='all, delete-orphan',
         passive_deletes=True,
