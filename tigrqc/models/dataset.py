@@ -309,6 +309,12 @@ class InvalidData(TableMixin, Model):
         ),
     )
 
+    @property
+    def path(self):
+        """The full path to the invalid directory.
+        """
+        return self.parent.path / self.rel_path
+
     def __repr__(self):
         return f'<InvalidData[{self.id}] - {self.rel_path}>'
 

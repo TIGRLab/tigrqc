@@ -9,7 +9,7 @@ from abc import ABC
 from pathlib import Path
 
 from tigrqc.exceptions import TigrQcException
-from tigrqc.models import Timepoint, Attempt, Series, TimepointDir, File, InvalidData
+from tigrqc.models import Timepoint, Attempt, Series, SourceDir, TimepointDir, File, InvalidData
 from tigrqc.models import get_or_create
 
 # To do:
@@ -406,6 +406,14 @@ def test_bids_load(
         else:
             for sess_dir, num in sessions:
                 test_bids_sess_load(db, subid, num, sess_dir, source_path)
+
+    # Finish by removing invalid stuff that no longer exists.
+    # Should probably just feed in SourceDir as arg instead of in pieces.
+    source_dir = SourceDir.query.filter_by(id=sourcedir_id).all()[0]
+    for child in source_dir.invalid_children:
+        if not child.path.exists():
+            # Need error handling here
+            child.delete()
 
 
 def strip_suffixes(path: Path) -> str:
