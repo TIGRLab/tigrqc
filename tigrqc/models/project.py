@@ -62,14 +62,9 @@ class Project(TableMixin, Model):
         cascade='all, delete',
         passive_deletes=True,
     )
-    # timepoints: Mapped[list['Timepoint']] = relationship(
-    #     'Timepoint',
-    #     back_populates='project',
-    #     viewonly=True,
-    # )
-    timepoints: AssociationProxy[list['Timepoint']] = association_proxy(
-        'ProjectSite',
-        'Timepoint',
+    timepoints: AssociationProxy[dict[str, 'Timepoint']] = association_proxy(
+        'sites',
+        'timepoints',
     )
 
     def __repr__(self) -> str:
@@ -134,14 +129,9 @@ class Site(TableMixin, Model):
         cascade='all, delete-orphan',
         passive_deletes=True,
     )
-    # timepoints: Mapped[list['Timepoint']] = relationship(
-    #     'Timepoint',
-    #     back_populates='site',
-    #     viewonly=True,
-    # )
-    timepoints: AssociationProxy[list['Timepoint']] = association_proxy(
-        'ProjectSite',
-        'Timepoint',
+    timepoints: AssociationProxy[dict[str, 'Timepoint']] = association_proxy(
+        'projects',
+        'timepoints',
     )
 
     @property

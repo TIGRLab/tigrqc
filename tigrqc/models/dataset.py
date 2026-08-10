@@ -322,6 +322,36 @@ class Timepoint(TableMixin, Model):
         Boolean, default=False, nullable=False
     )
 
+    project_site: Mapped['ProjectSite'] = relationship(
+        'ProjectSite',
+        back_populates='timepoints',
+    )
+    project: AssociationProxy['Project'] = association_proxy(
+        'project_site', 'project'
+    )
+    site: AssociationProxy['Site'] = association_proxy(
+        'project_site', 'site'
+    )
+    attempts: Mapped[dict[str, 'Attempt']] = relationship(
+        'Attempt',
+        back_populates='parent',
+        collection_class=attribute_keyed_dict('num'),
+        cascade='all, delete-orphan',
+        passive_deletes=True,
+    )
+    data_dirs: Mapped[list['TimepointDir']] = relationship(
+        'TimepointDir',
+        back_populates='timepoint',
+        cascade='all, delete-orphan',
+        passive_deletes=True,
+    )
+    invalid_contents: Mapped[list['InvalidData']] = relationship(
+        'InvalidData',
+        back_populates='timepoint',
+        cascade='all, delete-orphan',
+        passive_deletes=True,
+    )
+
     __table_args__ = (
         ForeignKeyConstraint(
             ['project_id', 'site_id'],
@@ -341,34 +371,6 @@ class Timepoint(TableMixin, Model):
             'num',
             name='uq_timepoint_project_site_subject_num',
         )
-    )
-
-    project_site: Mapped['ProjectSite'] = relationship(
-        'ProjectSite',
-        back_populates='timepoints',
-    )
-    project: AssociationProxy['Project'] = association_proxy(
-        'ProjectSite', 'Project'
-    )
-    site: AssociationProxy['Site'] = association_proxy('ProjectSite', 'Site')
-    attempts: Mapped[dict[str, 'Attempt']] = relationship(
-        'Attempt',
-        back_populates='parent',
-        collection_class=attribute_keyed_dict('num'),
-        cascade='all, delete-orphan',
-        passive_deletes=True,
-    )
-    data_dirs: Mapped[list['TimepointDir']] = relationship(
-        'TimepointDir',
-        back_populates='timepoint',
-        cascade='all, delete-orphan',
-        passive_deletes=True,
-    )
-    invalid_contents: Mapped[list['InvalidData']] = relationship(
-        'InvalidData',
-        back_populates='timepoint',
-        cascade='all, delete-orphan',
-        passive_deletes=True,
     )
 
 
