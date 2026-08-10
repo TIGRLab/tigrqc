@@ -60,10 +60,6 @@ class Dataset(TableMixin, Model):
         passive_deletes=True,
     )
     # Probably need to expose all source_dir invalid dirs here at some point
-    # invalid_dirs: AssociationProxy[list['InvalidData']] = association_proxy(
-    #     'source_dirs',
-    #     'invalid_children',
-    # )
 
     def __repr__(self):
         return f'<Dataset[{self.id}] - ({self.project_id}, {self.data_type})>'
@@ -89,12 +85,12 @@ class SourceDir(TableMixin, Model):
         ForeignKey('name_schemes.id'),
         nullable=False,
     )
-    created: Mapped[datetime] = mapped_column(
+    date_added: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),  # pylint: disable=not-callable
         nullable=False,
     )
-    last_read: Mapped[datetime] = mapped_column(
+    last_update: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),  # pylint: disable=not-callable
         onupdate=func.now(),  # pylint: disable=not-callable
@@ -143,6 +139,17 @@ class TimepointDir(TableMixin, Model):
         nullable=False,
     )
     dirname: Mapped[str] = mapped_column(PathType, nullable=False)
+    date_added: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),  # pylint: disable=not-callable
+        nullable=False,
+    )
+    last_update: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),  # pylint: disable=not-callable
+        onupdate=func.now(),  # pylint: disable=not-callable
+        nullable=False,
+    )
 
     timepoint: Mapped['Timepoint'] = relationship(
         'Timepoint',
@@ -205,6 +212,11 @@ class File(TableMixin, Model):
         ForeignKey('series.id', ondelete='CASCADE'),
         nullable=False,
     )
+    date_added: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),  # pylint: disable=not-callable
+        nullable=False,
+    )
     rel_path: Mapped[str] = mapped_column(PathType, nullable=False)
     file_type: Mapped[str] = mapped_column(
         Enum(
@@ -262,6 +274,11 @@ class InvalidData(TableMixin, Model):
         Integer,
         ForeignKey('timepoints.id', ondelete='CASCADE'),
         nullable=True,
+    )
+    date_added: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),  # pylint: disable=not-callable
+        nullable=False,
     )
     rel_path: Mapped[str] = mapped_column(PathType, nullable=False)
     # Might want to expand this to three states (to reflect 'unseen' state)
