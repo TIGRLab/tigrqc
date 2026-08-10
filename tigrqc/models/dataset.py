@@ -53,18 +53,20 @@ class Dataset(TableMixin, Model):
     project: Mapped['Project'] = relationship(
         'Project', back_populates='datasets'
     )
-    # invalid_dirs: Mapped[list['InvalidData']] = relationship(
-    #     'InvalidData',
-    #     back_populates='dataset',
-    #     cascade='all, delete',
-    #     passive_deletes=True,
-    # )
     source_dirs: Mapped[list['SourceDir']] = relationship(
         'SourceDir',
         back_populates='dataset',
         cascade='all, delete',
         passive_deletes=True,
     )
+    # Probably need to expose all source_dir invalid dirs here at some point
+    # invalid_dirs: AssociationProxy[list['InvalidData']] = association_proxy(
+    #     'source_dirs',
+    #     'invalid_children',
+    # )
+
+    def __repr__(self):
+        return f'<Dataset[{self.id}] - ({self.project_id}, {self.data_type})>'
 
 
 class SourceDir(TableMixin, Model):
@@ -120,6 +122,9 @@ class SourceDir(TableMixin, Model):
         UniqueConstraint('path', name='uq_source_dir_path'),
     )
 
+    def __repr__(self):
+        return f'<SourceDir[{self.id}] - {self.path}>'
+
 
 class TimepointDir(TableMixin, Model):
     """A directory containing a single timepoint from a source directory.
@@ -166,6 +171,9 @@ class TimepointDir(TableMixin, Model):
             name='uq_timepoint_dir_timepoint_id_sourcedir_id',
         ),
     )
+
+    def __repr__(self):
+        return f'<TimepointDir[{self.id}] - {self.dirname}>'
 
 
 # This probably needs to be a table with regexes (so you can auto ingest
@@ -221,10 +229,17 @@ class File(TableMixin, Model):
     )
 
     # I think I need another constraint here to avoid more than one nifti
-    # for a single series (i.e. duplicates copies...)
+    # for a single series (i.e. duplicates copies...) but don't want to
+    # accidentally mess up echoes
     __table_args__ = (
         UniqueConstraint('subdir_id', 'rel_path', name='uq_file_path'),
     )
+
+    def __repr__(self):
+        return (
+            f'<File[{self.id}] - (Series[{self.series_id}], '
+            f'{self.file_type})>'
+        )
 
 
 class InvalidData(TableMixin, Model):
@@ -273,6 +288,9 @@ class InvalidData(TableMixin, Model):
         ),
     )
 
+    def __repr__(self):
+        return f'<InvalidData[{self.id}] - {self.rel_path}>'
+
 
 # This is a place-holder until I actually add the name-convention management
 # classes.
@@ -291,11 +309,6 @@ class DatasetType(TableMixin, Model):
     __tablename__ = 'dataset_types'
     id: Mapped[str] = mapped_column(String(12), primary_key=True)
     description: Mapped[str] = mapped_column(String(60))
-
-
-# DM: STUDY, SITE, SUBID, TIMEPOINT, REPEAT
-# KCNI: STUDY, SITE, SUBID, TIMEPOINT, REPEAT, MODALITY
-# BIDS: (optional) SITE, SUBID, nested TIMEPOINT
 
 
 class Timepoint(TableMixin, Model):
@@ -373,6 +386,11 @@ class Timepoint(TableMixin, Model):
         )
     )
 
+    def __repr__(self):
+        if self.is_phantom:
+            return f'<Timepoint[{self.id}] - PHA - {self.subject_id}>'
+        return f'<Timepoint[{self.id}] - ({self.subject_id}, {self.num})>'
+
 
 class Attempt(TableMixin, Model):
     """Equiv to old dashboard's 'sessions' / Erin's concept of 'repeat'.
@@ -417,6 +435,9 @@ class Attempt(TableMixin, Model):
         ),
     )
 
+    def __repr__(self):
+        return f'<Attempt[{self.id}] - {self.num}>'
+
 
 class Series(TableMixin, Model):
     """Equiv to old dashboard's 'scan'. Renamed for clarity.
@@ -429,11 +450,9 @@ class Series(TableMixin, Model):
         ForeignKey('attempts.id', ondelete='CASCADE'),
         nullable=False,
     )
-    # Double check that this can handle series num > 2 digit
     num: Mapped[int] = mapped_column(
         PaddedNumType(width=2), nullable=False
     )
-    # Dicom header character limit
     description: Mapped[int] = mapped_column(String(64), nullable=False)
 
     parent: Mapped['Attempt'] = relationship(
@@ -455,27 +474,5 @@ class Series(TableMixin, Model):
         ),
     )
 
-
-# class InvalidDataDir(TableMixin, Model):
-#     """Handles subdirs that don't conform to the expected name scheme.
-
-#     If a subdirectory exists in a dataset it _might_ be something to ignore
-#     or it could be misnamed subject data. This tracks these directories
-#     so they can be reported to users or intentionally ignored.
-#     """
-#     __tablename__ = 'invalid_dataset_dirs'
-
-#     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-#     dataset_id: Mapped[int] = mapped_column(
-#         Integer,
-#         ForeignKey('datasets.id', ondelete='CASCADE'),
-#         nullable=False
-#     )
-#     dirname: Mapped[str] = mapped_column(String(255), nullable=False)
-#     ignore: Mapped[bool] = mapped_column(
-#         Boolean, default=False, nullable=False
-#     )
-
-#     dataset: Mapped['Dataset'] = relationship(
-#         'Dataset', back_populates='invalid_dirs'
-#     )
+    def __repr__(self):
+        return f'<Series[{self.id}] - {self.num}: {self.description}>'
