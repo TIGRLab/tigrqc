@@ -139,8 +139,10 @@ class NameConvention(ABC):
 class DatmanConvention(NameConvention):
     """A parser for the datman naming scheme.
     """
+    # Naming of each type of template needs a tweak...
     templates: dict = {
-        'subject': '^{study}_{site}_{subid}_{timepoint}_{session}$',
+        'subject': '^{study}_{site}_{subid}_{timepoint}$',
+        'session': '^{study}_{site}_{subid}_{timepoint}_{session}$',
         'phantom': '^{study}_{site}_PHA_{subid}$',
         # 'file': '{study}_{site}_{subid}_{timepoint}_{repeat}_{tag}_{series}_{description}',
     }
@@ -409,17 +411,23 @@ def test_bids_load(
 
     # Finish by removing invalid stuff that no longer exists.
     # Should probably just feed in SourceDir as arg instead of in pieces.
-    source_dir = SourceDir.query.filter_by(id=sourcedir_id).all()[0]
-    for child in source_dir.invalid_children:
-        if not child.path.exists():
-            # Need error handling here
-            child.delete()
+    clear_old_invalid_items(sourcedir_id)
 
 
 def strip_suffixes(path: Path) -> str:
     """Get the basename for a file with all suffixes stripped off.
     """
     return path.name.removesuffix(''.join(path.suffixes))
+
+
+def clear_old_invalid_items(source_id: int):
+    """Clear out old 'InvalidData' warnings if the item no longer exists.
+    """
+    source_dir = SourceDir.query.filter_by(id=source_id).all()[0]
+    for child in source_dir.invalid_children:
+        if not child.path.exists():
+            # Need error handling here
+            child.delete()
 
 
 def test_bids_sess_load(
@@ -456,6 +464,206 @@ def test_bids_sess_load(
     for nifti in sess_dir.rglob('*.nii*'):
         # Update the BC to handle file names and validate sub/sess/etc.?
         # fname = bc.regexes['file'].match(nifti.name)
+
+        # Get sidecar
+        # Need error correction:
+        #   No such file / unreadable file / invalid json
+        json_path = nifti.parent / (strip_suffixes(nifti) + '.json')
+        sidecar = json.loads(json_path.read_text())
+
+        ##### Handle bvec / bval here if they exist
+        ##### general func to take ext and get from nifti
+
+        # Needed info from sidecar
+        # Need error handling (fail if fields are missing?)
+        series_num = sidecar['SeriesNumber']
+        description = sidecar['SeriesDescription']
+        # No fail, if missing
+        repeat_num = sidecar.get('Repeat', '01')
+
+        attempt, _ = get_or_create(
+            db.session,
+            Attempt,
+            timepoint_id=timepoint.id,
+            num=repeat_num,
+        )
+
+        series, _ = get_or_create(
+            db.session,
+            Series,
+            attempt_id=attempt.id,
+            num=series_num,
+            other_fields={
+                'description': description,
+            },
+        )
+
+        get_or_create(
+            db.session,
+            File,
+            subdir_id=new_subdir.id,
+            rel_path=nifti.relative_to(sess_dir),
+            other_fields={
+                'series_id': series.id,
+                'file_type': 'nifti',
+            },
+        )
+        get_or_create(
+            db.session,
+            File,
+            subdir_id=new_subdir.id,
+            rel_path=json_path.relative_to(sess_dir),
+            other_fields={
+                'series_id': series.id,
+                'file_type': 'json',
+            },
+        )
+
+
+def test_dm_load(
+        db: SQLAlchemy,
+        source_path: Path,
+        dc: DatmanConvention,
+        project_id: str = 'ANDT',
+        sourcedir_id: int = 2,
+        site_id: str = 'CMH',
+        study_code: str | None = None,
+        site_code: str | None = None,
+):
+    """Load in a directory of datman raw data.
+
+    Problems:
+        - Code validation and tag validation not in use.
+        - If the code validation is turned on / off once fully implemented
+            there may end up being duplicate records / invalid state. A
+            timepoint dir or item might land in both InvalidData and
+            File/SourceDir/TimepointDir at the same time.
+    """
+    # Update input args
+
+    for subject_dir in source_path.iterdir():
+        if not subject_dir.is_dir():
+            continue
+
+        # This will do the validation itself if I want it to...
+        # But maybe I need an exception if validation is enabled but failed..
+        parsed_id = dc.parse_id(subject_dir.name)
+
+        if not parsed_id:
+            get_or_create(
+                db.session,
+                InvalidData,
+                sourcedir_id=sourcedir_id,
+                rel_path=subject_dir.name,
+                other_fields={
+                    'error_msg': 'Invalid Datman subject ID.',
+                },
+            )
+            continue
+
+        # This is where code validation happens. Maybe need a 'reason' col
+        # so the rejection reason can be reported here and above.
+        study = parsed_id.group('study') if 'study' in parsed_id.groupdict() else ''
+        site = parsed_id.group('site') if 'site' in parsed_id.groupdict() else ''
+        subid = parsed_id.group('id') if 'id' in parsed_id.groupdict() else parsed_id.group('subid')
+        # This should probably error out if no timepoint on ID (it's invalid, but would've failed
+        # by now anyway?)
+        timepoint = parsed_id.group('timepoint') if 'timepoint' in parsed_id.groupdict() else '01'
+
+        if (study_code and study) and (study != study_code):
+            # Failed study code validation. Report it.
+            get_or_create(
+                db.session,
+                InvalidData,
+                sourcedir_id=sourcedir_id,
+                rel_path=subject_dir.name,
+                other_fields={
+                    'error_msg': (
+                        f'Datman ID contains invalid study code {study}.'
+                    ),
+                },
+            )
+            continue
+
+        if (site_code and site) and (site != site_code):
+            # Failed site code validation. Report it.
+            get_or_create(
+                db.session,
+                InvalidData,
+                sourcedir_id=sourcedir_id,
+                rel_path=subject_dir.name,
+                other_fields={
+                    'error_msg': (
+                        f'Datman ID contains invalid site code {site}.'
+                    ),
+                },
+            )
+            continue
+
+        if not subid:
+            # No readable subid. Report it.
+            get_or_create(
+                db.session,
+                InvalidData,
+                sourcedir_id=sourcedir_id,
+                rel_path=subject_dir.name,
+                other_fields={
+                    'error_msg': (
+                        f'Datman ID contains unreadable subid field.'
+                    ),
+                },
+            )
+            continue
+
+        # Get session num and phantom info first.
+        # Sigh. Need to account for PHA data... (match PHA string
+        # in bids (?) ID +/- read it from the source dir table if they're
+        # kept separate...)
+
+        # How to report an empty timepoint dir? Ignoring seems bad.
+        test_dm_sess_load(db, subid, timepoint, subject_dir, source_path)
+        clear_old_invalid_items(sourcedir_id)
+
+
+def test_dm_sess_load(
+    db: SQLAlchemy,
+    subid: str,
+    num: str,
+    sess_dir: Path,
+    source_path: Path,
+    sourcedir_id: int = 2,
+    project_id: str = 'ANDT',
+    site_id: str = 'CMH',
+):
+    """Load / refresh a single datman session.
+
+    Issues:
+        - This tries to read the 'attempt' from the json which only works from
+            our post 'use-dcm2bids' jsons. Older datasets only have in file
+            name.
+        - This doesn't make use of our file name validation and tag validation
+    """
+    timepoint, _ = get_or_create(
+        db.session,
+        Timepoint,
+        project_id=project_id,
+        site_id=site_id,
+        subject_id=subid,
+        num=num,
+    )
+
+    # Func should probably just take source_dir record
+    new_subdir, _ = get_or_create(
+        db.session,
+        TimepointDir,
+        timepoint_id=timepoint.id,
+        sourcedir_id=sourcedir_id,
+        dirname=sess_dir.relative_to(source_path),
+    )
+
+    # Possibly optionally validate tags here later
+    for nifti in sess_dir.rglob('*.nii*'):
+        # update dc to parse file names here?
 
         # Get sidecar
         # Need error correction:
