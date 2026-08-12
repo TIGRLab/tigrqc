@@ -718,3 +718,184 @@ def test_dm_sess_load(
                 'file_type': 'json',
             },
         )
+
+
+# Dataset
+#   - id
+#   - Project that owns it
+#   - collection of source dirs
+#   - 'use':
+#       - raw
+#           - Reads sidecars
+#           - Gets full path to niftis for viewing in papaya
+#       - QC
+#           - Images / csvs / etc.
+#           - Images can optionally be grouped together
+#           - Each image / image group / metric file attached to a real series
+#           - Metric files optionally get read in
+#           - Optional titles per image / group
+#           - Optional display ordering
+#           - Optional sign off header.
+#       - Tech notes
+#           - Just display the file per timepoint
+#   - Name convention
+#      - Dictates how to reconstruct the ID / display the ID
+
+# Rough specs
+datman_raw_source = {
+    'paths': {
+        'timepoint': '{root_path}/({subject}_{timepoint}|{phantom})',
+        'contents': '{file_regexes}',
+    },
+    'file_regexes': {
+        '{fname}.nii*': 'raw_scan',
+        '{fname}.json': 'sidecar',
+        '{fname}.bvec': 'bvec',
+        '{fname}.bval': 'bval',
+    },
+    'validates': {
+        # Keys with empty list if only validating study
+        # '*' with list of site codes if only validating site
+        # otherwise key: [site1, site2] etc. per valid study code.
+        'study': {},
+        # Keys with empty list if only ensuring tag is recognizable
+        # Tag with series descr regex if matching tag to specific series
+        'tags': {},
+    }
+}
+
+bids_raw_source = {
+    'paths': {
+        'timepoint': '{root_path}/({subject}|{phantom})',
+        'contents': '[{timepoint}/]{modality}/{file_regexes}',
+    },
+    'file_regexes': {
+        '{fname}.nii*': 'raw_scan',
+        '{fname}.json': 'sidecar',
+        '{fname}.bvec': 'bvec',
+        '{fname}.bval': 'bval',
+    },
+    'validates': {
+        # Same as above
+        'study': {},
+        # More complicated than tag matching...right?
+        'modality': {},
+    }
+}
+
+bids_paths = {
+    'timepoint_dir': [
+        '({subject}|{phantom})',
+        '[{timepoint}]',
+    ],
+    'files': [
+        '{modality}',
+        '{file_regexes}'
+    ],
+}
+
+dm_paths = {
+    'timepoint_dir': [
+        '({timepoint}|{phantom})',
+    ],
+    'files': [
+        '{file_regexes}',
+    ],
+}
+
+file_regexes = {
+    '*.nii*': 'raw_scan',
+    '*.json': 'sidecar',
+    '*.bvec': 'bvec',
+    '*.bval': 'bval',
+}
+validates = {}
+
+
+class TestDatman(NameConvention):
+    """Testing new directory parsing.
+    """
+    templates: dict = {
+        # 'subject': '{project}_{site}_{subid}',
+        'timepoint': '{project}_{site}_{subid}_{tnum}',
+        'phantom': '{study}_{site}_PHA_{subid}',
+        'fname': '({timepoint}|{phantom})_{attempt}_{tag}_{snum}_{description}'
+    }
+
+    default_patterns: dict = {
+        'project': r'[^_]+',
+        'site': r'[^_]+',
+        'subid': r'(?!PHA)([^_]+)',
+        'tnum': r'[^_]+',
+        'attempt': r'[^_]+',
+    }
+
+
+class TestBids(NameConvention):
+    """Testing new directory parsing.
+    """
+    templates: dict = {
+        'subject': 'sub-{subid}',
+        # This might be the wrong approach, maybe subid pattern should change
+        'phantom': 'sub-PHA{subid}',
+        'timepoint': 'ses-{tp_num}',
+        'modality': '{mod}',
+        'fname': 'sub-{subid}_ses-{tp_num}_{entities}{suffix}',
+    }
+
+    default_patterns: dict = {
+        'subid': r'(?P<site>[A-Z]{3})(?P<id>[A-Z0-9]+)',
+        'tp_num': r'[0-9]{2}',
+        'mod': f'[a-z]+',
+        'entities': r'(?:[A-Za-z0-9]+-[A-Za-z0-9]+_)*',
+        'suffix': r'[A-Za-z0-9]+',
+    }
+
+
+def make_path_regex(path_templates, name_convention):
+    """Take a path template and make it into a path regex
+    """
+    result = []
+    for dir_template in path_templates:
+        subdir = dir_template.format_map(name_convention.regexes)
+        result.append(subdir)
+    return result
+
+
+def get_timepoint_dirs(source_dir, path_regex, name_convention):
+    """Take a source dir, get the timepoint paths + info.
+    """
+
+
+    return
+
+
+# Raw data:
+#   - Main directory needs at a minimum
+#       - Phantom support!
+#       - For invalid data:
+#           - source dir ID
+#           - rel_path (of the invalid dir within source)
+#           - error message explaining issue
+#       - For valid timepoint dirs:
+#           -> project ID and site ID have to come from regexes OR source conf
+#           - subid
+#           - timepoint num
+#           - timepoint dir obj (which takes timepoint.id, source dir ID, rel dir within source path)
+#               - timepoint.id
+#               - source dir ID
+#               - rel path within source_path
+
+#  - For each timepoint/session dir in main directory:
+#       - For invalid data:
+#           - source dir ID
+#           - rel_path
+#           - timepoint.id
+#           - error message
+#       - For valid data
+#           - Pair of nifti + json (fail if either missing)
+#           - series num
+#           - series description
+#           - repeat / attempt or '01'
+#           - rel_path to the file relative to timepoint dir
+#           - file type (or extension? or both?)
