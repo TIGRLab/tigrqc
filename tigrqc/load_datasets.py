@@ -1000,10 +1000,16 @@ bids_templates = {
     'session': 'ses-{tp_num}',
 }
 
+# data type sets tp_num = '' to catch instances where the sub- contents
+# mix a real session and modality dirs
+# Path templates entries per dir:
+#   (might be a good idea to mark certain templates path, id, file? rather
+#    than separate columns)
+#
 bids_path_templates = {
     'timepoint_dir': [
         '^{subject}$',
-        ['^{session}$', '^{modality}$'],
+        ['^{session}$', '^{data_type}$'],
     ]
 }
 
@@ -1028,7 +1034,8 @@ def handle_template(template, patterns):
     directory_templates = []
     for dir_level in template:
         if isinstance(dir_level, str):
-            return dir_level.format_map(patterns)
+            directory_templates.append(dir_level.format_map(patterns))
+            continue
 
         alternates = []
         for alt in dir_level:
@@ -1175,6 +1182,8 @@ def collect_timepoints(source_dir, dir_regexes, level=0, parsed=None):
                 level + 1,
                 merged,
             )
+            matches.extend(subdir_matches)
+            failed.extend(subdir_matches)
 
     return matches, failed
 
