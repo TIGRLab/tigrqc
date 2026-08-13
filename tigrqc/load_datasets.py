@@ -989,13 +989,23 @@ dm_path_templates = {
     'phantom_fname': '^{phantom}_{tag}_{series}_{description}$',
 }
 
+bids_patterns = {
+    'subid': r'(?P<site>[A-Z]{3})(?P<id>[A-Z0-9]+)',
+    'tp_num': r'(?P<tp_num>[0-9]{2})',
+    'data_type': r'(?P<data_type>[a-z]*)'
+}
 
-# def merge_templates(templates, patterns):
-    # Trap exceptions and report all issues at once at the end. This
-    # can be used to validate when the user submits a new template or path
-    # template. Path templates must be made of reg templates and reg
-    # templates of patterns (actual regex bits). Can include regex bits in
-    # the templates themselves tho, as long as final result is valid regex.
+bids_templates = {
+    'subject': 'sub-{subid}',
+    'session': 'ses-{tp_num}',
+}
+
+bids_path_templates = {
+    'timepoint_dir': [
+        '^{subject}$',
+        ['^{session}$', '^{modality}$'],
+    ]
+}
 
 
 def handle_template(template, patterns):
