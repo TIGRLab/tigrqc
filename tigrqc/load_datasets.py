@@ -819,7 +819,7 @@ class TestDatman(NameConvention):
         # 'subject': '{project}_{site}_{subid}',
         'timepoint': '{project}_{site}_{subid}_{tnum}',
         'phantom': '{study}_{site}_PHA_{subid}',
-        'fname': '({timepoint}|{phantom})_{attempt}_{tag}_{snum}_{description}'
+        'fname': '{timepoint|phantom}_{attempt}_{tag}_{snum}_{description}'
     }
 
     default_patterns: dict = {
@@ -869,6 +869,22 @@ def get_timepoint_dirs(source_dir, path_regex, name_convention):
 
     return
 
+# datman_regexes = {
+#     'subject_id': (
+#         "(?P<full_id>(?P<med_id>(?P<short_id>(?P<study>[^_]+)_"
+#         "(?P<site>[^_]+)_"
+#         "(?P<subject>[^_]+))(?<!PHA)_"
+#         "(?P<timepoint>[^_]+))_"
+#         "(?!MR)(?!SE)(?P<session>[^_]+))"
+#     ),
+#     'phantom_id': (
+#         "(?P<id>(?P<study>[^_]+)_"
+#         "(?P<site>[^_]+)_"
+#         "(?P<subject>PHA_(?P<type>[A-Z]{3})(?P<num>[0-9]{4,6}))"
+#         "(?P<timepoint>)(?P<session>))"
+#     )
+# }
+
 
 # Raw data:
 #   - Main directory needs at a minimum
@@ -899,3 +915,264 @@ def get_timepoint_dirs(source_dir, path_regex, name_convention):
 #           - repeat / attempt or '01'
 #           - rel_path to the file relative to timepoint dir
 #           - file type (or extension? or both?)
+
+
+# Take path templates
+#   populate them with regexes that have been constructed from name convention
+#   templates
+#   then re compile
+#   so re.compile delayed until needed (? maybe retain the strings for reuse
+#   need to compile early to catch issues)
+
+def _load_patterns(templates, patterns):
+    loaded = {}
+    for template_type, template in templates.items():
+        for name, item in patterns.items():
+            token = '{' + name + '}'
+            if token in template:
+                template = template.replace(token, f'(?P<{name}>{item})')
+
+        try:
+            re.compile(template)
+        except re.error as e:
+            print(f'unreable template rendered: {template}')
+            continue
+        loaded[template_type] = template
+    return loaded
+
+
+def _make_path_regexes(templates, name_patterns):
+    if not isinstance(templates, list):
+        templates = [templates]
+
+    path_regexes = []
+    for dir_template in templates:
+        continue
+
+
+# The language
+# patterns are traditional regexes
+# templates are compositions of patterns/regexes
+#   - Are applied to 'items': a single dir level or file
+#   - Can be lists
+
+# Naming convention determines how the files are organized...
+# but individual datasets can have different organization so separate the
+# 'locating the data' part, so its in the naming convention part
+# and separate the 'what data to pull' part because it's specific to the
+# dataset.
+
+dm_patterns = {
+    'project': r'(?P<project>[^_]+)',
+    'site': r'(?P<site>[^_]+)',
+    'subid': r'(?!PHA)(?P<timepoint>[^_]+)',
+    'tp_num': r'(?P<tp_num>[^_]+)',
+    'attempt': r'(?!MR)(?!SE)(?P<attempt>[^_]+)',
+    'tag': r'(?P<tag>[^_]+)',
+    'series': r'(?P<series>[^_]+)',
+    'description': r'(?P<description>[^_]+)',
+}
+
+dm_templates = {
+    'short_id': '{project}_{site}_{subid}',
+    'med_id': '{project}_{site}_{subid}_{tp_num}',
+    'long_id': '{project}_{site}_{subid}_{tp_num}_{attempt}',
+    'phantom': '{project}_{site}_PHA_{subid}',
+}
+
+dm_path_templates = {
+    'timepoint_dir': [
+        ['^{med_id}$', '^{phantom}$'],
+    ],
+    'fname': '^{long_id}_{tag}_{series}_{description}$',
+    'phantom_fname': '^{phantom}_{tag}_{series}_{description}$',
+}
+
+
+# def merge_templates(templates, patterns):
+    # Trap exceptions and report all issues at once at the end. This
+    # can be used to validate when the user submits a new template or path
+    # template. Path templates must be made of reg templates and reg
+    # templates of patterns (actual regex bits). Can include regex bits in
+    # the templates themselves tho, as long as final result is valid regex.
+
+
+def handle_template(template, patterns):
+    """Merge a single entry in a set of templates.
+
+    Template may be:
+        - A string that may contain python regular expressions or placeholders
+            for pre-existing regex 'patterns' to be inserted into.
+        - A list that represents a series of directories to traverse. One
+            entry per directory expected to be travelled. Each entry may be:
+            - A string containing python regular expressions, plain characters
+                or placeholders for pre-existing regex 'patterns' to be
+                inserted into.
+            - A nested list, which contains alternate templates to match
+                a directory against, when multiple patterns may be accepted.
+    """
+    if isinstance(template, str):
+        return template.format_map(patterns)
+
+    directory_templates = []
+    for dir_level in template:
+        if isinstance(dir_level, str):
+            return dir_level.format_map(patterns)
+
+        alternates = []
+        for alt in dir_level:
+            alternates.append(alt.format_map(patterns))
+
+        directory_templates.append(alternates)
+
+    return directory_templates
+
+
+def fill_templates(templates, patterns):
+    """This will expose if any template reference a pattern that doesn't exist.
+    """
+    filled = {}
+    for key, template in templates.items():
+        filled[key] = handle_template(template, patterns)
+    return filled
+
+
+def testing_templates(reg_templates, path_templates, patterns):
+    filled_reg = fill_templates(reg_templates, patterns)
+    new_patterns = {**filled_reg, **patterns}
+    filled_paths = fill_templates(path_templates, new_patterns)
+    return filled_reg, filled_paths
+
+
+def compile_regexes(templates):
+    """Compile the final templates into something usable.
+
+    This will expose if any template is an invalid RE. Could maybe wrap
+    this into the handle_templates function so final regexes get compiled
+    but intermediate do not.
+    """
+    regexes = {}
+    for key, template in templates.items():
+        if isinstance(template, str):
+            regexes[key] = re.compile(template)
+            continue
+        dir_regexes = []
+        for dir_level in template:
+            if isinstance(dir_level, str):
+                dir_regexes.append(re.compile(dir_level))
+                continue
+            alts = []
+            for alternate in dir_level:
+                alts.append(re.compile(alternate))
+            dir_regexes.append(alts)
+        regexes[key] = dir_regexes
+    return regexes
+
+
+def get_timepoints_w_regexes(source_path, dir_regexes):
+    """Test generic retrieval using the template interface.
+    """
+    results = {
+        'passed': [],
+        'failed': [],
+    }
+    for child in source_path.iterdir():
+        if not child.is_dir():
+            continue
+        # is_valid = False
+        current_dir = child
+        for dir_level in dir_regexes:
+            if not is_valid_dirname(current_dir.name, dir_level):
+                results['failed'].append(current_dir)
+                break
+            # current_dir =
+
+
+
+def is_valid_dirname(dirname, dir_regexes):
+    """Take a single directory name, and an re.Pattern or list of alt re.Pattern
+    and return True if this current directory matches.
+    """
+    if isinstance(dir_regexes, re.Pattern):
+        return bool(dir_regexes.match(dirname))
+
+    for alternate in dir_regexes:
+        if alternate.match(dirname):
+            return True
+
+    return False
+
+
+def collect_timepoints(source_dir, dir_regexes, level=0, parsed=None):
+    """Recursively collect correctly named timepoint paths.
+    """
+    parsed = parsed or {}
+    matches = []
+    failed = []
+
+    regexes = dir_regexes[level]
+    if isinstance(regexes, re.Pattern):
+        regexes = [regexes]
+
+    for item in source_dir.iterdir():
+        if not item.is_dir():
+            continue
+
+        match = None
+        attempt_errors = []
+        for pattern in regexes:
+            m = pattern.match(item.name)
+            if m:
+                match = m
+                break
+            attempt_errors.append(pattern)
+
+        if match is None:
+            failure = FailedMatch(
+                item,
+                f'Failed to match regexes during traversal. {str(attempt_errors)}'
+            )
+            failed.append(failure)
+            continue
+
+        new_groups = match.groupdict()
+        conflict = None
+        for field, value in new_groups.items():
+            if field in parsed and parsed[field] != value:
+                config = (field, parsed[field], value)
+                break
+
+        if conflict:
+            field, old_value, new_value = config
+            reason = (
+                f'{item.name} matched regex {str(match)} but field {field} '
+                f'mismatches a previously found value: old - {old_value} ',
+                f'new: {new_value}.'
+            )
+            failed.append(
+                FailedMatch(item, reason)
+            )
+            continue
+
+        merged = {**parsed, **new_groups}
+        if level == (len(dir_regexes) - 1):
+            matches.append({**merged, 'path': item})
+        else:
+            subdir_matches, subdir_fails = collect_timepoints(
+                item,
+                dir_regexes,
+                level + 1,
+                merged,
+            )
+
+    return matches, failed
+
+
+# 'raw' datasets spec for templates:
+#   required path_templates:
+#       - 'timepoint_dir'
+#           - full path to a singular timepoint of data.
+#           - Required to yield: timepoint
+#           - Optionally yields: project, site, tp_num
+#       - 'files'
+#           - A pair of raw nifti + json sidecar for each series.
