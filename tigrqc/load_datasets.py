@@ -966,6 +966,7 @@ dm_patterns = {
     'project': r'(?P<project>[^_]+)',
     'site': r'(?P<site>[^_]+)',
     'subid': r'(?!PHA)(?P<timepoint>[^_]+)',
+    'pha_subid': r'(?P<timepoint>(?P<pha_type>[A-Z]{3})(?P<id>[0-9]{4,8}))',
     'tp_num': r'(?P<tp_num>[^_]+)',
     'attempt': r'(?!MR)(?!SE)(?P<attempt>[^_]+)',
     'tag': r'(?P<tag>[^_]+)',
@@ -977,7 +978,7 @@ dm_templates = {
     'short_id': '{project}_{site}_{subid}',
     'med_id': '{project}_{site}_{subid}_{tp_num}',
     'long_id': '{project}_{site}_{subid}_{tp_num}_{attempt}',
-    'phantom': '{project}_{site}_PHA_{subid}',
+    'phantom': '{project}_{site}(?P<pha>_PHA_){pha_subid}',
 }
 
 dm_path_templates = {
@@ -1139,11 +1140,11 @@ def collect_timepoints(source_dir, dir_regexes, level=0, parsed=None):
         conflict = None
         for field, value in new_groups.items():
             if field in parsed and parsed[field] != value:
-                config = (field, parsed[field], value)
+                conflict = (field, parsed[field], value)
                 break
 
         if conflict:
-            field, old_value, new_value = config
+            field, old_value, new_value = conflict
             reason = (
                 f'{item.name} matched regex {str(match)} but field {field} '
                 f'mismatches a previously found value: old - {old_value} ',
@@ -1167,6 +1168,11 @@ def collect_timepoints(source_dir, dir_regexes, level=0, parsed=None):
 
     return matches, failed
 
+
+from typing import NamedTuple
+class FailedMatch(NamedTuple):
+    path: Path
+    reason: str
 
 # 'raw' datasets spec for templates:
 #   required path_templates:
