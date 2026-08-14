@@ -1005,13 +1005,255 @@ bids_templates = {
 # Path templates entries per dir:
 #   (might be a good idea to mark certain templates path, id, file? rather
 #    than separate columns)
+#   uniform_children (all must match one but not others and no mix)
+#       - Plain bool means fail all if mixed
+#       - mixed_pass: index, means pass all that match that regex when mixed.
+#               fail others.
+#   regexes (list of one or more)
 #
+# For files that come in sets
+#   - Optional 'fields' in the the fname that must match to restrict
+#   - regexes: a list of 1+ path template to match (how to label them in db though?)
+#   - required: all (find whole set or error), False (find or don't, who cares),
+#               partial (find at least one... how to mark?)
 bids_path_templates = {
     'timepoint_dir': [
         '^{subject}$',
         ['^{session}$', '^{data_type}$'],
     ]
 }
+
+better_bids_path_templates = {
+    'timepoint_dir': [
+        {
+            'patterns': ['^{subject}$'],
+            'child_settings': {
+                'require_uniform': True,
+                # The pattern that passes when not uniform.
+                'pass_pattern': 0,
+            }
+        },
+        {
+            'patterns': ['^{session}$', '^{data_type}$'],
+        }
+    ]
+}
+
+
+test_templates = {
+    'timepoint_dir': {
+        'type': 'dir',
+        'patterns': [
+            {
+                'type': 'dir',
+                'patterns': [
+                    '^{subject}$',
+                ],
+                'child_settings': {
+                    'require_uniform': True,
+                    # pass_pattern only allowed if 'require_unform' = True,
+                    # optional. If not given all fail if not matching same.
+                    'pass_pattern': 0,
+                },
+            },
+            {
+                'type': 'dir',
+                'patterns': [
+                    '^{session}$',
+                    '^{data_type}$',
+                ],
+            }
+        ],
+    },
+}
+
+
+# Most plain, but valid. Assumed to be a dir unless told otherwise
+test1 = {
+    'timepoint_dir': '^{subject}$',
+}
+
+# Alts, but still valid and no other metadata. Also assumed to be dirs.
+test2 = {
+    'timepoint_dir': [
+        '^{session}$',
+        '^{data_type}$',
+    ],
+}
+
+# Non-dir but simple
+test3 = {
+    'timepoint_dir': {
+        'type': 'file',
+        'patterns': r'[a-zA-Z]*.nii.gz',
+    }
+}
+
+# Parent level is fully expressed, patterns are not regular.
+test4 = {
+    'timepoint_dir': {
+        'type': 'dir',
+        'patterns': [
+            '^{session}$',
+            '^{data_type}$',
+        ],
+    }
+}
+
+# Fully expressed at every level. Just must fill and compile.
+# For a single directory level, patterns can be joined together or
+# separated into other entries if they have their own config? No, just
+# keep it regular. Sigh.
+valid_bids_paths = {
+    'timepoint_dir': {
+        'type': 'dir',
+        # Each directory level should be a list even if of one item. Sigh.
+        'patterns': [
+            [
+                {
+                    'type': 'dir',
+                    'pattern': '^{subject}$',
+                    'child_settings': {
+                        'require_uniform': True,
+                        # pass_pattern only allowed if 'require_unform' = True,
+                        # optional. If not given all fail if not matching same.
+                        'pass_pattern': 0,
+                    },
+                }
+            ],
+            [
+                {
+                    'type': 'dir',
+                    'pattern': '^{session}$',
+                },
+                {
+                    'type': 'dir',
+                    'pattern': '^{data_type}$',
+                    'use_parent': True,
+                }
+            ],
+        ]
+    }
+}
+
+valid_datman_paths = {
+    'timepoint_dir': {
+        'type': 'dir',
+        'patterns': [
+            [
+                {
+                    'type': 'dir',
+                    'pattern': '^{med_id}$',
+                },
+                {
+                    'type': 'dir',
+                    'pattern': '^{phantom}$',
+                }
+            ]
+        ]
+    }
+}
+
+
+atoms = {
+    'subid': r'(?P<subid>(?P<site>[A-Z]{3})(?P<id>[A-Z0-9]+))',
+    'tp_num': r'(?P<tp_num>[0-9]{2})',
+    'data_type': r'(?P<data_type>[a-z]*)',
+    'bad_regex': r'(?P<field>[a-z]*',
+}
+complex_components = {
+    'subject': 'sub-{subid}',
+    'session': 'ses-{tp_num}',
+    'should_fail': 'sub-{other}{subid}',
+}
+
+# Ok so components are raw regex pieces key:vals
+# and also ID format fields key:vals
+
+def assemble_atoms(simple, complex_components):
+    """Take elementary components, fill them if needed, validate they compile.
+    """
+    validated_atoms = {}
+    failures = {}
+    for key, value in simple.items():
+        try:
+            # Make sure it compiles for now, but keep plain string.
+            re.compile(value)
+        except re.error as e:
+            failures[key] = f'Component is an invalid regex - {str(e)}'
+        else:
+            validated_atoms[key] = value
+
+    validated_complex = {}
+    for key, value in complex_components.items():
+        try:
+            filled = value.format_map(validated_atoms)
+        except KeyError as e:
+            failures[key] = (
+                f'Referenced non-existent component {str(e)}. '
+                'The required component may have failed validation or may be '
+                'undefined.'
+            )
+            continue
+
+        try:
+            re.compile(filled)
+        except re.error as e:
+            failures[key] = f'Component is an invalid regex - {str(e)}'
+        else:
+            validated_complex[key] = filled
+
+    result = {**validated_atoms, **validated_complex}
+    return result, failures
+
+
+def compile_path_regexes(valid_conf, components):
+    for key, path_settings in valid_conf.items():
+        for dir_level in path_settings['patterns']:
+            # Honestly each level should be allowed to be a singular string...
+            # But maybe not worth it. Just let users provide it that way and
+            # normalize it.
+
+            for alternate in dir_level:
+                # Might want to change the regex name at this level since
+                # should only be one per 'alternate'. Singular.
+                path_template = alternate['pattern']
+
+
+                # The fact that this is valid should have been checked when it
+                # got added to the database. Recheck any time the name convention
+                # or data type templates / atoms are modified.
+                path_template = path_template.format_map(components)
+
+                # Ditto this. Everything should be _known_ to compile before
+                # it ever gets used by the app.
+                result = re.compile(path_template)
+                alternate['pattern'] = result
+
+    return valid_conf
+
+
+def make_template_entry(entry, components, etype='dir'):
+    child_settings = child_settings or {}
+
+    if isinstance(entry, str):
+        entry = {
+            'type': etype,
+            'patterns': [entry]
+        }
+
+    if isinstance(entry, list):
+        entry = {
+            'type': etype,
+            'patterns': entry,
+        }
+
+    for item in entry:
+        # Need some error handling here?
+        # Make sure adequate reporting when template references nonexistent
+        # component or full thing can't compile.
+        entry['patterns'].append(re.compile(item.format_map(components)))
+    return entry
 
 
 def handle_template(template, patterns):
@@ -1087,26 +1329,6 @@ def compile_regexes(templates):
     return regexes
 
 
-def get_timepoints_w_regexes(source_path, dir_regexes):
-    """Test generic retrieval using the template interface.
-    """
-    results = {
-        'passed': [],
-        'failed': [],
-    }
-    for child in source_path.iterdir():
-        if not child.is_dir():
-            continue
-        # is_valid = False
-        current_dir = child
-        for dir_level in dir_regexes:
-            if not is_valid_dirname(current_dir.name, dir_level):
-                results['failed'].append(current_dir)
-                break
-            # current_dir =
-
-
-
 def is_valid_dirname(dirname, dir_regexes):
     """Take a single directory name, and an re.Pattern or list of alt re.Pattern
     and return True if this current directory matches.
@@ -1121,29 +1343,36 @@ def is_valid_dirname(dirname, dir_regexes):
     return False
 
 
-def collect_timepoints(source_dir, dir_regexes, level=0, parsed=None):
+def collect_timepoints(source_dir, dir_regexes, level=0, parsed=None, children=None):
     """Recursively collect correctly named timepoint paths.
     """
     parsed = parsed or {}
     matches = []
     failed = []
+    # Used to restrict a search area if some children pass
+    children = children or source_dir.iterdir()
 
     regexes = dir_regexes[level]
+    # Can remove this check if you normalize every dir level into a list
+    # at the database level.
     if isinstance(regexes, re.Pattern):
         regexes = [regexes]
 
-    for item in source_dir.iterdir():
+    for item in children:
         if not item.is_dir():
             continue
 
+        # Match gets re match result but now also need 'entry'
+        # you get it incidentally because of the break but that's
+        # kind of hacky.
         match = None
         attempt_errors = []
-        for pattern in regexes:
-            m = pattern.match(item.name)
+        for entry in regexes:
+            m = entry['pattern'].match(item.name)
             if m:
                 match = m
                 break
-            attempt_errors.append(pattern)
+            attempt_errors.append(entry)
 
         if match is None:
             failure = FailedMatch(
@@ -1183,7 +1412,7 @@ def collect_timepoints(source_dir, dir_regexes, level=0, parsed=None):
                 merged,
             )
             matches.extend(subdir_matches)
-            failed.extend(subdir_matches)
+            failed.extend(subdir_fails)
 
     return matches, failed
 
@@ -1201,3 +1430,118 @@ class FailedMatch(NamedTuple):
 #           - Optionally yields: project, site, tp_num
 #       - 'files'
 #           - A pair of raw nifti + json sidecar for each series.
+
+
+def collect_paths(source_dir, path_regexes, level=0, parsed=None,
+                  parent_reqs=None):
+    """parent_reqs are inherited from the parent dir. Include things like
+    uniform matching (and which matches to allow through, if any, if that fails)
+    """
+    parsed = parsed or {}
+    final_matches = []
+
+    regexes = path_regexes[level]
+
+    matches = {}
+    failures = []
+    for subdir in source_dir.iterdir():
+        if not subdir.is_dir():
+            continue
+
+        # Take first match only.
+        # Inform user to order their regexes from most restrictive to
+        # least.
+        match = None
+        attempt_errors = []
+        for idx, entry in enumerate(regexes):
+            m = entry['pattern'].match(subdir.name)
+            if m:
+                match = m
+                matches.setdefault(idx, []).append((subdir, entry, match))
+                break
+            attempt_errors.append(entry)
+
+        if match is None:
+            failure = FailedMatch(
+                subdir,
+                f'Failed to match regexes during traversal.'
+            )
+            failures.append(failure)
+
+        # Need to get parsed + verify no mismatches before you recurse
+
+    # Massively needs a clean up.
+    if parent_reqs:
+        if (
+            'require_uniform' in parent_reqs and parent_reqs['require_uniform']
+            and len(matches) > 1
+            ):
+
+            if 'pass_pattern' in parent_reqs and parent_reqs['pass_pattern'] is not None:
+                pass_idx = parent_reqs['pass_pattern']
+            else:
+                pass_idx = -1
+
+            for idx in list(matches.keys()):
+                if idx != pass_idx:
+                    for group in matches[idx]:
+                        # Update this to take a custom error message fed
+                        # in by the parent dir's settings.
+                        failures.append(
+                            FailedMatch(
+                                group[0],
+                                f'All directories must match same regex, or be of type {pass_idx}'
+                            )
+                        )
+                    del matches[idx]
+
+    # This must be seriously cleaned up...
+    for idx in list(matches.keys()):
+        ## If use_parent is given, every dir at that level _must_ provide
+        ## the same info. Also, require_uniform must be set by the parent
+        ## Can't use one without the other. Must validate this at db add.
+        if any([group[1].get('use_parent', False) for group in matches[idx]]):
+            group = matches[idx][0]
+            matches[idx] = [(source_dir, group[1], group[2])]
+
+
+    # possibly flatten this now that the indexes aren't needed
+    for idx, groups in matches.items():
+        for group in groups:
+            subdir, entry, match = group
+
+            new_groups = match.groupdict()
+            conflict = None
+            for field, value in new_groups.items():
+                if field in parsed and parsed[field] != value:
+                    conflict = (field, parsed[field], value)
+                    break
+
+            if conflict:
+                field, old_value, new_value = conflict
+                reason = (
+                    f'{subdir.name} matched regex {str(match)} but field {field} '
+                    f'mismatches a previously found value: old - {old_value} ',
+                    f'new: {new_value}.'
+                )
+                failures.append(
+                    FailedMatch(subdir, reason)
+                )
+                continue
+
+            merged = {**parsed, **new_groups}
+            if level == (len(path_regexes) - 1):
+                final_matches.append({**merged, 'path': subdir})
+            else:
+                child_settings = entry.get('child_settings', None)
+                subdir_matches, subdir_fails = collect_paths(
+                    subdir, path_regexes, level + 1, merged,
+                    parent_reqs=child_settings
+                )
+                final_matches.extend(subdir_matches)
+                failures.extend(subdir_fails)
+
+    return final_matches, failures
+
+
+
