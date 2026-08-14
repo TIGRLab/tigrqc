@@ -985,19 +985,25 @@ dm_path_templates = {
     'timepoint_dir': [
         ['^{med_id}$', '^{phantom}$'],
     ],
-    'fname': '^{long_id}_{tag}_{series}_{description}$',
-    'phantom_fname': '^{phantom}_{tag}_{series}_{description}$',
+    'fname': '{long_id}_{tag}_{series}_{description}',
+    'phantom_fname': '{phantom}_{tag}_{series}_{description}',
 }
 
 bids_patterns = {
     'subid': r'(?P<site>[A-Z]{3})(?P<id>[A-Z0-9]+)',
+    'pha_subid': r'(?P<site>(?!PHA)[A-Z]{3})(?P<pha>PHA)(?P<id>[A-Z0-9]+)',
     'tp_num': r'(?P<tp_num>[0-9]{2})',
-    'data_type': r'(?P<data_type>[a-z]*)'
+    'data_type': r'(?P<data_type>[a-z]*)',
+    'entities': r'(?:[A-Za-z0-9]+-[A-Za-z0-9]+_)*',
+    'suffix': r'[A-Za-z0-9]+',
 }
 
 bids_templates = {
     'subject': 'sub-{subid}',
     'session': 'ses-{tp_num}',
+    'phantom': 'sub-{pha_subid}',
+    'fname': 'sub-{subid}_ses-{tp_num}_{entities}{suffix}',
+    'phantom_fname': 'sub-{pha_subid}_ses-{tp_num}_{entities}{suffix}',
 }
 
 # data type sets tp_num = '' to catch instances where the sub- contents
@@ -1151,9 +1157,84 @@ valid_datman_paths = {
                 }
             ]
         ]
-    }
+    },
+    # This is bids specific right now.
+    'raw_data': {
+        'type': 'file',
+        # Change patterns at this level to 'paths'
+        # maybe drop the type and change 'items' to files. So the diff
+        # between a dir and a file is dir always has 'paths' and files always
+        # has 'files' and you take items accordingly. (What about dirs that
+        # may source info from files? Sigh. Use type if present to override assumption)
+        'patterns': [
+            {
+                'type': 'dir',
+                'pattern': '^{data_type}$',
+            }
+        ],
+        'items': {
+            'nifti': {
+                'patterns': [
+                    '^{fname}.nii*',
+                    '^{phantom_fname}.nii*',
+                ],
+                # Don't mix phantom and non-phantom data for datman.
+                'require_uniform': True,
+                # Expect a json for every nifti.
+                'require': ['sidecar'],
+            },
+            'sidecar': {
+                'patterns': [
+                    '^{fname}.json',
+                    '^{phantom_fname}.json',
+                ],
+                'require_uniform': True,
+                'require': ['nifti'],
+            },
+            'bvec': {
+                'patterns': [
+                    '^{fname}.bvec',
+                    '^{phantom_fname}.bvec',
+                ],
+                'require_uniform': True,
+            },
+            'bval': {
+                'patterns': [
+                    '^{fname}.bval',
+                    '^{phantom_fname}.bval',
+                ],
+                'require_uniform': True,
+            },
+        },
+        # Contrast this with a 'read_file' option which loads in the
+        # whole file and populates the File table as told.
+        'read_from_file': [
+            {
+                'from': 'sidecar',
+                'format': 'json',
+                'items': [
+                    # Make require optional.. if no default is true unless told
+                    # otherwise
+                    {
+                        'fills_template': 'series',
+                        'key': 'SeriesNumber',
+                        'require': True,
+                    },
+                    {
+                        'fills_template': 'description',
+                        'key': 'SeriesDescription',
+                        'require': True,
+                    },
+                    {
+                        'fills_template': 'attempt',
+                        'key': 'Repeat',
+                        'Default': '01',
+                    },
+                ]
+            }
+        ]
+    },
 }
-
 
 atoms = {
     'subid': r'(?P<subid>(?P<site>[A-Z]{3})(?P<id>[A-Z0-9]+))',
@@ -1544,4 +1625,14 @@ def collect_paths(source_dir, path_regexes, level=0, parsed=None,
     return final_matches, failures
 
 
+def collect_files(source_dir, regexes):
+    # Require:
+    #   - series num
+    #   - series description
+    #   - file type / role (????)
 
+    # Optional:
+    #   - Repeat num / attempt num
+
+
+    return
