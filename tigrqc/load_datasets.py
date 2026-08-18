@@ -995,7 +995,7 @@ bids_patterns = {
     'tp_num': r'(?P<tp_num>[0-9]{2})',
     'data_type': r'(?P<data_type>[a-z]*)',
     'entities': r'(?:[A-Za-z0-9]+-[A-Za-z0-9]+_)*',
-    'suffix': r'[A-Za-z0-9]+',
+    'suffix': r'(?P<suffix>[A-Za-z0-9]+)',
 }
 
 bids_templates = {
@@ -1114,7 +1114,7 @@ valid_bids_paths = {
     'timepoint_dir': {
         'type': 'dir',
         # Each directory level should be a list even if of one item. Sigh.
-        'patterns': [
+        'path': [
             [
                 {
                     'type': 'dir',
@@ -1139,7 +1139,86 @@ valid_bids_paths = {
                 }
             ],
         ]
-    }
+    },
+    'raw_data': {
+        'type': 'file',
+        'path': [
+            [
+                {
+                    'type': 'dir',
+                    'pattern': '^{data_type}$',
+                }
+            ]
+        ],
+        # Add option to report dirs or non-matching files as errors.
+        'items': [
+            {
+                # Add require_uniform? to account for multiple regexes?
+
+                # This is mandatory. For plain files nothing else needed?
+                # e.g. a qc metric.
+                'patterns': [
+                    '^(?P<fname>{fname}).(?P<ext>.*)',
+                    '^(?P<fname>{phantom_fname}).(?P<ext>.*)',
+                ],
+                # This is optional, if the files that match the above must
+                # be 'grouped', e.g. the pieces of a series.
+                # How to format output though? Has to be consistent.
+                'group_by': ['fname'],
+                'group_items': [
+                    {
+                        # Keys from the above regex to match to identify
+                        'match': {
+                            'ext': 'nii.gz',
+                        },
+                        # A group missing this is wrong
+                        'required': True,
+                        # How to tag it in the DB
+                        'role': 'raw_scan',
+                    },
+                    {
+                        'match': {
+                            'ext': 'json',
+                        },
+                        'required': True,
+                        'role': 'sidecar',
+                        'format': 'json',
+                        'read_vals': [
+                            {
+                                'key': 'SeriesNumber',
+                                'store': 'series',
+                                'require': True,
+                            },
+                            {
+                                'key': 'SeriesDescription',
+                                'store': 'description',
+                                'require': True,
+                            },
+                            {
+                                'key': 'Repeat',
+                                'store': 'attempt',
+                                'default': '01',
+                            },
+                        ]
+                    },
+                    {
+                        'match': {
+                            'ext': 'bvec',
+                        },
+                        'required': False,
+                        'role': 'bvec',
+                    },
+                    {
+                        'match': {
+                            'ext': 'bval',
+                        },
+                        'required': False,
+                        'role': 'bval',
+                    }
+                ]
+            }
+        ]
+    },
 }
 
 valid_datman_paths = {
@@ -1248,6 +1327,180 @@ complex_components = {
     'should_fail': 'sub-{other}{subid}',
 }
 
+
+old_raw_conf = {
+    # This is bids specific right now.
+    'raw_data': {
+        'type': 'file',
+        # Change patterns at this level to 'paths'
+        # maybe drop the type and change 'items' to files. So the diff
+        # between a dir and a file is dir always has 'paths' and files always
+        # has 'files' and you take items accordingly. (What about dirs that
+        # may source info from files? Sigh. Use type if present to override assumption)
+        'path': [
+            [
+                {
+                    'type': 'dir',
+                    'pattern': '^{data_type}$',
+                }
+            ]
+        ],
+        'items': {
+            'nifti': {
+                'patterns': [
+                    '^{fname}.nii*',
+                    '^{phantom_fname}.nii*',
+                ],
+                # Don't mix phantom and non-phantom data for datman.
+                'require_uniform': True,
+                # Expect a json for every nifti.
+                'require': ['sidecar'],
+            },
+            'sidecar': {
+                'patterns': [
+                    '^{fname}.json',
+                    '^{phantom_fname}.json',
+                ],
+                'require_uniform': True,
+                'require': ['nifti'],
+            },
+            'bvec': {
+                'patterns': [
+                    '^{fname}.bvec',
+                    '^{phantom_fname}.bvec',
+                ],
+                'require_uniform': True,
+            },
+            'bval': {
+                'patterns': [
+                    '^{fname}.bval',
+                    '^{phantom_fname}.bval',
+                ],
+                'require_uniform': True,
+            },
+        },
+        # Contrast this with a 'read_file' option which loads in the
+        # whole file and populates the File table as told.
+        'read_from_file': [
+            {
+                'from': 'sidecar',
+                'format': 'json',
+                'items': [
+                    # Make require optional.. if no default is true unless told
+                    # otherwise
+                    {
+                        'fills_template': 'series',
+                        'key': 'SeriesNumber',
+                        'require': True,
+                    },
+                    {
+                        'fills_template': 'description',
+                        'key': 'SeriesDescription',
+                        'require': True,
+                    },
+                    {
+                        'fills_template': 'attempt',
+                        'key': 'Repeat',
+                        'Default': '01',
+                    },
+                ]
+            }
+        ]
+    },
+}
+
+alt_bids_conf = {
+    'path': [
+        [
+            {
+                'type': 'dir',
+                'pattern': '^{data_type}$',
+            }
+        ]
+    ],
+    'items': [
+        {
+            'role': 'raw_scan',
+            'patterns': [
+                '^(?P<fname>{fname}).nii*',
+                '^(?P<fname>{phantom_fname}).nii*',
+            ],
+        },
+        {
+            'role': 'sidecar',
+            'patterns': [
+                '^(?P<fname>{fname}).json$',
+                '^(?P<fname>{phantom_fname}).json$',
+            ],
+        },
+        {
+            'role': 'bvec',
+            'patterns': [
+                '^(?P<fname>{fname}).bvec$',
+                '^(?P<fname>{phantom_fname}).bvec$',
+            ],
+        },
+        {
+            'role': 'bval',
+            'patterns': [
+                '^(?P<fname>{fname}).bval$',
+                '^(?P<fname>{phantom_fname}).bval$',
+            ],
+        },
+    ],
+    'groups': [
+        {
+            'group_by': [
+                'fname',
+            ],
+            'expected_members': [
+                {
+                    'role': 'raw_scan',
+                    'num': 1,
+                    'required': True,
+                },
+                {
+                    'role': 'sidecar',
+                    'num': 1,
+                    'required': True,
+                },
+                {
+                    'role': 'bval',
+                    'num': 1,
+                    'required': False,
+                },
+                {
+                    'role': 'bval',
+                    'num': 1,
+                    'required': False,
+                }
+            ],
+            'shared_vals': {
+                'read_from': 'sidecar',
+                'format': 'json',
+                'values': [
+                    {
+                        'key': 'SeriesNumber',
+                        'store': 'series',
+                        'required': True,
+                    },
+                    {
+                        'key': 'SeriesDescription',
+                        'store': 'description',
+                        'required': True,
+                    },
+                    {
+                        'key': 'Repeat',
+                        'store': 'attempt',
+                        'default': '01',
+                        'required': False,
+                    }
+                ]
+            }
+        }
+    ],
+}
+
 # Ok so components are raw regex pieces key:vals
 # and also ID format fields key:vals
 
@@ -1314,188 +1567,247 @@ def compile_path_regexes(valid_conf, components):
     return valid_conf
 
 
-def make_template_entry(entry, components, etype='dir'):
-    child_settings = child_settings or {}
-
-    if isinstance(entry, str):
-        entry = {
-            'type': etype,
-            'patterns': [entry]
-        }
-
-    if isinstance(entry, list):
-        entry = {
-            'type': etype,
-            'patterns': entry,
-        }
-
-    for item in entry:
-        # Need some error handling here?
-        # Make sure adequate reporting when template references nonexistent
-        # component or full thing can't compile.
-        entry['patterns'].append(re.compile(item.format_map(components)))
-    return entry
-
-
-def handle_template(template, patterns):
-    """Merge a single entry in a set of templates.
-
-    Template may be:
-        - A string that may contain python regular expressions or placeholders
-            for pre-existing regex 'patterns' to be inserted into.
-        - A list that represents a series of directories to traverse. One
-            entry per directory expected to be travelled. Each entry may be:
-            - A string containing python regular expressions, plain characters
-                or placeholders for pre-existing regex 'patterns' to be
-                inserted into.
-            - A nested list, which contains alternate templates to match
-                a directory against, when multiple patterns may be accepted.
+def compile_regexes(valid_conf, components):
+    """Slot components into patterns and compile within complex configuration
     """
-    if isinstance(template, str):
-        return template.format_map(patterns)
+    errors = {}
+    # Used for dir and file entries. Populate the patterns.
+    for key, settings in valid_conf.items():
+        block_errors = []
+        # Might want to require every entry to define 'path' even if empty list
+        if 'path' in settings:
+            for dir_level in settings['path']:
+                for alt_pattern in dir_level:
+                    # Is it worth checking this here? or have each key
+                    # searched for and reported at database entry?
+                    path_template = alt_pattern['pattern']
+                    try:
+                        path_template = path_template.format_map(components)
+                    except KeyError as e:
+                        block_errors.append(
+                            'Path pattern references unknown config '
+                            f'component {str(e)}'
+                        )
+                        continue
+                    try:
+                        result = re.compile(path_template)
+                    except re.error as e:
+                        block_errors.append(
+                            f'Invalid regex {path_template} - {str(e)}'
+                        )
+                        continue
+                    alt_pattern['pattern'] = result
 
-    directory_templates = []
-    for dir_level in template:
-        if isinstance(dir_level, str):
-            directory_templates.append(dir_level.format_map(patterns))
-            continue
+        if 'items' in settings:
+            for ftype, fsettings in settings['items'].items():
+                # Should be plural or singular for both 'types' of config...
+                filled_patterns = []
+                for item in fsettings['patterns']:
+                    try:
+                        filled = item.format_map(components)
+                    except KeyError as e:
+                        block_errors.append(
+                            f'{ftype} pattern references unknown config '
+                            f'component {str(e)}'
+                        )
+                        continue
+                    try:
+                        result = re.compile(filled)
+                    except re.error as e:
+                        block_errors.append(
+                            f'{ftype} invalid regex {filled} - {str(e)}'
+                        )
+                        continue
+                    filled_patterns.append(result)
+                fsettings['patterns'] = filled_patterns
 
-        alternates = []
-        for alt in dir_level:
-            alternates.append(alt.format_map(patterns))
+        errors[key] = block_errors
 
-        directory_templates.append(alternates)
-
-    return directory_templates
-
-
-def fill_templates(templates, patterns):
-    """This will expose if any template reference a pattern that doesn't exist.
-    """
-    filled = {}
-    for key, template in templates.items():
-        filled[key] = handle_template(template, patterns)
-    return filled
-
-
-def testing_templates(reg_templates, path_templates, patterns):
-    filled_reg = fill_templates(reg_templates, patterns)
-    new_patterns = {**filled_reg, **patterns}
-    filled_paths = fill_templates(path_templates, new_patterns)
-    return filled_reg, filled_paths
-
-
-def compile_regexes(templates):
-    """Compile the final templates into something usable.
-
-    This will expose if any template is an invalid RE. Could maybe wrap
-    this into the handle_templates function so final regexes get compiled
-    but intermediate do not.
-    """
-    regexes = {}
-    for key, template in templates.items():
-        if isinstance(template, str):
-            regexes[key] = re.compile(template)
-            continue
-        dir_regexes = []
-        for dir_level in template:
-            if isinstance(dir_level, str):
-                dir_regexes.append(re.compile(dir_level))
-                continue
-            alts = []
-            for alternate in dir_level:
-                alts.append(re.compile(alternate))
-            dir_regexes.append(alts)
-        regexes[key] = dir_regexes
-    return regexes
+    return valid_conf, errors
 
 
-def is_valid_dirname(dirname, dir_regexes):
-    """Take a single directory name, and an re.Pattern or list of alt re.Pattern
-    and return True if this current directory matches.
-    """
-    if isinstance(dir_regexes, re.Pattern):
-        return bool(dir_regexes.match(dirname))
+# def make_template_entry(entry, components, etype='dir'):
+#     child_settings = child_settings or {}
 
-    for alternate in dir_regexes:
-        if alternate.match(dirname):
-            return True
+#     if isinstance(entry, str):
+#         entry = {
+#             'type': etype,
+#             'patterns': [entry]
+#         }
 
-    return False
+#     if isinstance(entry, list):
+#         entry = {
+#             'type': etype,
+#             'patterns': entry,
+#         }
+
+#     for item in entry:
+#         # Need some error handling here?
+#         # Make sure adequate reporting when template references nonexistent
+#         # component or full thing can't compile.
+#         entry['patterns'].append(re.compile(item.format_map(components)))
+#     return entry
 
 
-def collect_timepoints(source_dir, dir_regexes, level=0, parsed=None, children=None):
-    """Recursively collect correctly named timepoint paths.
-    """
-    parsed = parsed or {}
-    matches = []
-    failed = []
-    # Used to restrict a search area if some children pass
-    children = children or source_dir.iterdir()
+# def handle_template(template, patterns):
+#     """Merge a single entry in a set of templates.
 
-    regexes = dir_regexes[level]
-    # Can remove this check if you normalize every dir level into a list
-    # at the database level.
-    if isinstance(regexes, re.Pattern):
-        regexes = [regexes]
+#     Template may be:
+#         - A string that may contain python regular expressions or placeholders
+#             for pre-existing regex 'patterns' to be inserted into.
+#         - A list that represents a series of directories to traverse. One
+#             entry per directory expected to be travelled. Each entry may be:
+#             - A string containing python regular expressions, plain characters
+#                 or placeholders for pre-existing regex 'patterns' to be
+#                 inserted into.
+#             - A nested list, which contains alternate templates to match
+#                 a directory against, when multiple patterns may be accepted.
+#     """
+#     if isinstance(template, str):
+#         return template.format_map(patterns)
 
-    for item in children:
-        if not item.is_dir():
-            continue
+#     directory_templates = []
+#     for dir_level in template:
+#         if isinstance(dir_level, str):
+#             directory_templates.append(dir_level.format_map(patterns))
+#             continue
 
-        # Match gets re match result but now also need 'entry'
-        # you get it incidentally because of the break but that's
-        # kind of hacky.
-        match = None
-        attempt_errors = []
-        for entry in regexes:
-            m = entry['pattern'].match(item.name)
-            if m:
-                match = m
-                break
-            attempt_errors.append(entry)
+#         alternates = []
+#         for alt in dir_level:
+#             alternates.append(alt.format_map(patterns))
 
-        if match is None:
-            failure = FailedMatch(
-                item,
-                f'Failed to match regexes during traversal. {str(attempt_errors)}'
-            )
-            failed.append(failure)
-            continue
+#         directory_templates.append(alternates)
 
-        new_groups = match.groupdict()
-        conflict = None
-        for field, value in new_groups.items():
-            if field in parsed and parsed[field] != value:
-                conflict = (field, parsed[field], value)
-                break
+#     return directory_templates
 
-        if conflict:
-            field, old_value, new_value = conflict
-            reason = (
-                f'{item.name} matched regex {str(match)} but field {field} '
-                f'mismatches a previously found value: old - {old_value} ',
-                f'new: {new_value}.'
-            )
-            failed.append(
-                FailedMatch(item, reason)
-            )
-            continue
 
-        merged = {**parsed, **new_groups}
-        if level == (len(dir_regexes) - 1):
-            matches.append({**merged, 'path': item})
-        else:
-            subdir_matches, subdir_fails = collect_timepoints(
-                item,
-                dir_regexes,
-                level + 1,
-                merged,
-            )
-            matches.extend(subdir_matches)
-            failed.extend(subdir_fails)
+# def fill_templates(templates, patterns):
+#     """This will expose if any template reference a pattern that doesn't exist.
+#     """
+#     filled = {}
+#     for key, template in templates.items():
+#         filled[key] = handle_template(template, patterns)
+#     return filled
 
-    return matches, failed
+
+# def testing_templates(reg_templates, path_templates, patterns):
+#     filled_reg = fill_templates(reg_templates, patterns)
+#     new_patterns = {**filled_reg, **patterns}
+#     filled_paths = fill_templates(path_templates, new_patterns)
+#     return filled_reg, filled_paths
+
+
+# def compile_regexes(templates):
+#     """Compile the final templates into something usable.
+
+#     This will expose if any template is an invalid RE. Could maybe wrap
+#     this into the handle_templates function so final regexes get compiled
+#     but intermediate do not.
+#     """
+#     regexes = {}
+#     for key, template in templates.items():
+#         if isinstance(template, str):
+#             regexes[key] = re.compile(template)
+#             continue
+#         dir_regexes = []
+#         for dir_level in template:
+#             if isinstance(dir_level, str):
+#                 dir_regexes.append(re.compile(dir_level))
+#                 continue
+#             alts = []
+#             for alternate in dir_level:
+#                 alts.append(re.compile(alternate))
+#             dir_regexes.append(alts)
+#         regexes[key] = dir_regexes
+#     return regexes
+
+
+# def is_valid_dirname(dirname, dir_regexes):
+#     """Take a single directory name, and an re.Pattern or list of alt re.Pattern
+#     and return True if this current directory matches.
+#     """
+#     if isinstance(dir_regexes, re.Pattern):
+#         return bool(dir_regexes.match(dirname))
+
+#     for alternate in dir_regexes:
+#         if alternate.match(dirname):
+#             return True
+
+#     return False
+
+
+# def collect_timepoints(source_dir, dir_regexes, level=0, parsed=None, children=None):
+#     """Recursively collect correctly named timepoint paths.
+#     """
+#     parsed = parsed or {}
+#     matches = []
+#     failed = []
+#     # Used to restrict a search area if some children pass
+#     children = children or source_dir.iterdir()
+
+#     regexes = dir_regexes[level]
+#     # Can remove this check if you normalize every dir level into a list
+#     # at the database level.
+#     if isinstance(regexes, re.Pattern):
+#         regexes = [regexes]
+
+#     for item in children:
+#         if not item.is_dir():
+#             continue
+
+#         # Match gets re match result but now also need 'entry'
+#         # you get it incidentally because of the break but that's
+#         # kind of hacky.
+#         match = None
+#         attempt_errors = []
+#         for entry in regexes:
+#             m = entry['pattern'].match(item.name)
+#             if m:
+#                 match = m
+#                 break
+#             attempt_errors.append(entry)
+
+#         if match is None:
+#             failure = FailedMatch(
+#                 item,
+#                 f'Failed to match regexes during traversal. {str(attempt_errors)}'
+#             )
+#             failed.append(failure)
+#             continue
+
+#         new_groups = match.groupdict()
+#         conflict = None
+#         for field, value in new_groups.items():
+#             if field in parsed and parsed[field] != value:
+#                 conflict = (field, parsed[field], value)
+#                 break
+
+#         if conflict:
+#             field, old_value, new_value = conflict
+#             reason = (
+#                 f'{item.name} matched regex {str(match)} but field {field} '
+#                 f'mismatches a previously found value: old - {old_value} ',
+#                 f'new: {new_value}.'
+#             )
+#             failed.append(
+#                 FailedMatch(item, reason)
+#             )
+#             continue
+
+#         merged = {**parsed, **new_groups}
+#         if level == (len(dir_regexes) - 1):
+#             matches.append({**merged, 'path': item})
+#         else:
+#             subdir_matches, subdir_fails = collect_timepoints(
+#                 item,
+#                 dir_regexes,
+#                 level + 1,
+#                 merged,
+#             )
+#             matches.extend(subdir_matches)
+#             failed.extend(subdir_fails)
+
+#     return matches, failed
 
 
 from typing import NamedTuple
@@ -1633,6 +1945,79 @@ def collect_files(source_dir, regexes):
 
     # Optional:
     #   - Repeat num / attempt num
+    results = []
+    failures = []
+
+    # Check and complain if 'items' not in config?
+
+    if 'path' in regexes:
+        found, errors = collect_paths(source_dir, regexes['path'])
+        failures.extend(errors)
+        source_dir = found
+    else:
+        source_dir = [{
+            'path': source_dir
+        }]
+
+    for file_conf in regexes['items']:
+        collected = []
+        for entry in source_dir:
+            for item in entry['path'].iterdir():
+                # Add option to report dirs if they shouldnt exist
+                if item.is_dir():
+                    continue
+
+                match = None
+                for pattern in file_conf['patterns']:
+                    m = pattern.match(item.name)
+                    if m:
+                        match = m
+                        break
+
+                if not match:
+                    # Report error here
+                    continue
+
+                parsed = match.groupdict()
+                parsed['path'] = item
+                collected.append(parsed)
+
+        if 'group_by' in file_conf:
+            # Raise an exception here if 'group_items' is not also defined.
+            grouped = group_by_keys(collected, file_conf['group_by'])
+            for key, group in grouped.items():
+                parsed_group = {}
+                for group_conf in file_conf['group_items']:
+                    match = None
+                    for item in group:
+                        if is_match(group_conf['match'], item):
+                            match = item
+                            break
+                    if not match:
+                        if 'required' in group_conf and group_conf['required']:
+                            # report error
+                            print(f"Missing a match for {group_conf}")
+                        continue
+
+                    match['path']
+                    parsed_group.setdefault(group_conf['role'], []).append(match)
 
 
-    return
+
+
+    return results, failures
+
+
+from collections import defaultdict
+def group_by_keys(dicts, keys):
+    groups = defaultdict(list)
+    for d in dicts:
+        group_key = tuple(d[k] for k in keys)
+        groups[group_key].append(d)
+    return groups
+
+
+def is_match(expected, actual):
+    # This should maybe be expanded later to allow regexes.. but then
+    # this complicates the match dict format doesnt it.
+    return all(actual[k] == expected[k] for k in expected)
