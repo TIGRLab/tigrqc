@@ -1,0 +1,152 @@
+# Raw datman
+# -----------
+#   - Take rel timepoint dir path so whole sub can be reloaded individually
+#   - read project/site/subject/timepoint/PHA from dirname + make/get Timepoint
+#
+#   - Grab all files:  source_dir/timepoint_dir/*
+#           - All should be pha if timepoint is
+#           - None should be if timepoint isn't
+#       - Group by (whole filename minus ext)
+#           - Every file group must contain both nifti and sidecar.
+#               i.e. any file found means both must exist
+#           - Per group, first item:
+#               - Get attempt, make/get Attempt
+#               - Get series num / series description, make/get Series
+#           - For each in group:
+#               - Make file item with rel path (rel to timepoint?) hooked
+#                   onto the series
+#               - Add semantic label (sidecar/raw_scan/bvec/bval) based on
+#                 what it matched
+
+# Raw bids
+# -----------
+#   - Take rel path to either 'sub-XXXX' if no ses dir, or 'sub-XXXX/ses-XX'
+#     if it exists. So a single timepoint can be reloaded.
+#           - Report if ses-XX exists and any other type of dir is present.
+#           - Process ses anyway
+#   - Read [optional] study/site/PHA and subject from sub-XXXX
+#     and optional timepoint from ses-XX. Make/get Timepoint
+
+#   - Grab all files source_dir/sub-XXXX/[ses-XX]/*/*
+#         - Every file group must contain both nifti and sidecar.
+#         - Every file must be _either_ PHA or real sub not both
+#       - Group by (data_type/whole_filename? or just filename?) minus ext
+#           - Grab the json, open it.
+#           - Get series num, series description, optional repeat
+#           - Get/Make Series
+#       - For each item in group:
+#           - Make file item with rel path (rel to timepoint dir) hooked to
+#               the series
+#           - Add semantic label based on match
+
+# Datman QC
+# ---------
+#
+# Ditto raw. EXCEPT:
+#   - File groups still happen by filename, but don't require nii and json
+#   - Don't care about phantom or not anymore. Match right timepoint but
+#       otherwise is irrelevent.
+#   - May need to read in some file contents of various types for storage.
+#
+
+# Datman tech notes / other resources
+#
+# Must hook onto timepoint only, unless file name has structure...
+# No file groups. Singular file matches
+# arbitrary levels of directory nesting... _usually_ is MISC/notes.pdf
+# but datman has had to do recursive search in the past...
+
+# MRIQC
+#
+# - Insufficient info to bootstrap a database. Unless maybe you read
+#   the figures etc.? Not worth trying yet.
+#
+# - Require existing bids data. (how to express...)
+# - Grab htmls at root level (no timepoint_dir to hook to...)
+#       - Match filename (minus ext) to bids file name in same project
+#            and then grab series from that match.
+#       - Make File item per html and point it at existing Series.
+#       - Group all files under a single timepoint dir (with empty dir)
+#         so an entire timepoint's contents can be re-read... wait
+#         that doesn't work because new items are missed...
+#
+#       - Files that can't find a series get marked as invalid data and
+#          flagged with a message.
+#
+#   -> Must check if TimepointDir can be made empty string.
+#       -> From pathlib's perspective this is fine.
+#   -> If it's the empty string the UI should omit the subject specific refresh.
+#       -> This is maybe unneccessary. If pathlib makes valid path then it
+#           will just be a shortcut to refresh the whole directory.
+#           You'll get the semanticly correct behavior (the 'timepoint' refreshed)
+#           without having hacky if statements everywhere at the cost of
+#           probably unnoticeable slowness added.
+#       -> !!!!! One caveat is that _every_ timepoint dir object must
+#           update its 'last_update' col to avoid users spamming.
+
+id: datman_raw
+version: 1.0.0
+description: >
+    Raw scan data generated with the legacy datman-style naming scheme and
+    organization. Import all scans and their sidecars.
+
+# Is relative to source_dir
+# Over-rideable or extendable by any found item.
+# Each entry is a directory level that must match the regex given.
+# The endpoint gets saved as a shorthand reference for each subject's entire data.
+timepoint_dir:
+    - ['^{med_id}$', '^{phantom}$']
+
+find:
+    - label: raw_scan
+      pattern:
+        - '^{fname}.nii*'
+        - '^{phantom_fname}.nii*'
+
+    - label: sidecar
+      pattern:
+        - '^{fname}.json$'
+        - '^{phantom_fname}.json$'
+
+    - label: bvec
+      pattern:
+        - '^{fname}.bvec$'
+        - '^{phantom_fname}.bvec$'
+
+    - label: bval
+      pattern:
+        - '^{fname}.bval$'
+        - '^{phantom_fname}.bval$'
+
+# Optionally group files together for validation / easier processing.
+# This might need to be more complicated later...
+#
+# Grouping runs before validation and lookup (?)
+# Might need to tag the group with a name...
+group_by:
+    - file_name
+
+# Totally optional.
+# Can toggle behavior of find or run entire functions and report issues
+# or fail entirely on issues
+validation:
+    - use: validate_nifti_and_sidecar_exist_per_series
+      # The fail message should be able to use components/templates...
+      fail_message: >
+        'Missing nifti and/or sidecar for series.'
+
+    # These two validators should maybe be on the naming scheme and
+    # get applied to every dataset using the naming scheme
+    # since the naming scheme determines whether phantoms exist
+    # and whether site/study are even part of an ID.
+    - use: validate_all_phantom_or_all_subject_data
+      fail_message: >
+        'Timepoint contains mix of phantom and human data. Should be one or the other.'
+
+    - use: validate_id_fields_match_expected
+      args:
+        check_study: True
+        check_site: True
+      fail_message: >
+        'Study or Site code in ID does not match the expected settings.'
+

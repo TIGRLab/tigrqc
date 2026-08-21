@@ -1,0 +1,89 @@
+# See raw_datman.yaml for notes
+
+# Fields can be given in any order
+# but documentation must specify the execution order as well as defaults and
+# acceptable values / formats.
+
+# Must also specify that by the time this config 'runs' all the components
+# and templates exist and can be referenced. And new ones can be defined as
+# long as they don't contain the {} characters. If a regex requires those
+# they should be added to the user's components, which is the only piece
+# that allows them.
+
+# Validation of config must expose needed / given fields and verify
+# they match (naming scheme pieces and dataset pieces and display config pieces
+# must all 'connect' properly...)
+
+id: mriqc
+# Is it worth having separate software version + config version?
+# Right now it's software version.
+version: 24.1.0
+description: >
+    MRIQC HTML reports. Import all series html pages found in the top
+    level of the source directory.
+
+preconditions:
+    # scan_data_exists must be a function I write.
+    #   -> Ensure at least one series has been made?
+    #   -> Indicates that this dataset is derived from another and
+    #      the other must exist first, because it can't stand alone.
+    # timepoint_data_exists is another one I might need...
+    # Make it clear the data hierarchy of dependency is:
+    #   Timepoint -> Series -> File
+    # With imported data potentially slotting in anywhere in that hierarchy.
+    #
+    # When users modify config in browser they get a list of existing
+    # functions and chance to write their own error message.
+    # Have a default message since generally fails are for the same reason.
+
+    # This must verify it exists _for this project_. Not very useful if it
+    # just exists in the database.
+    - check: scan_data_exists
+      fail_message: >
+        MRIQC can only be imported if at least one dataset has already
+        been imported. None were found.
+
+# timepoint_dir can be specified here and overridden at any level
+# so if a single item is at top level use timepoint_dir: []
+# Or set once per item and omit?
+timepoint_dir: []
+
+# Items and paths to read from the filesystem
+find:
+    # Each item in the find list gets pulled in as a File.
+    # and aggregated under timepoint_dir in database for fast single item reloads
+
+    # The label will be saved on the File page and be referenced by things
+    # that control the page layout
+    - label: mriqc_page
+      # Can supply this if extra path must be navigated between timepoint_dir
+      # and item.
+      append_path: []
+      pattern:
+        - '^(?P<stem>{bids_file}).html'
+        - '^(?P<stem>{bids_pha_file}).html'
+
+# After file system is read, before database is populated, groups and lookup
+# run.
+#
+# Take a list of fields/elements to group found files by. Name the group
+# so it can be referenced and validated later or used for other parts.
+# group:
+
+lookup:
+    # Define lookup functions. Write once and offer users list to
+    # choose from.
+    - use: find_series_by_file
+      args:
+        # Left side is the function arg name
+        # Right side is python native type or the fields that should
+        # exist in the metadata at this point (i.e. fields defined by templates)
+        name: stem
+        # Limit results to dataset's defined project
+        limit_project: True
+        # Limit results to series/dataset's site
+        limit_site: True
+      # This will have a default message also. With file path in error.
+      fail_message: >
+        'Unable to identify series that created file.'
+

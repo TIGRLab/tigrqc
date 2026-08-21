@@ -979,6 +979,8 @@ dm_templates = {
     'med_id': '{project}_{site}_{subid}_{tp_num}',
     'long_id': '{project}_{site}_{subid}_{tp_num}_{attempt}',
     'phantom': '{project}_{site}(?P<pha>_PHA_){pha_subid}',
+    'fname': '(?P<file_name>{long_id}_{tag}_{series}_{description})',
+    'phantom_fname': '(?P<file_name>{phantom}_{tag}_{series}_{description})'
 }
 
 dm_path_templates = {
