@@ -123,30 +123,15 @@ find:
 #
 # Grouping runs before validation and lookup (?)
 # Might need to tag the group with a name...
-group_by:
-    - file_name
+# group_by:
+#     - file_name
 
 # Totally optional.
 # Can toggle behavior of find or run entire functions and report issues
 # or fail entirely on issues
 validation:
     - use: validate_nifti_and_sidecar_exist_per_series
+      group_by: file_name
       # The fail message should be able to use components/templates...
       fail_message: >
         'Missing nifti and/or sidecar for series.'
-
-    # These two validators should maybe be on the naming scheme and
-    # get applied to every dataset using the naming scheme
-    # since the naming scheme determines whether phantoms exist
-    # and whether site/study are even part of an ID.
-    - use: validate_all_phantom_or_all_subject_data
-      fail_message: >
-        'Timepoint contains mix of phantom and human data. Should be one or the other.'
-
-    - use: validate_id_fields_match_expected
-      args:
-        check_study: True
-        check_site: True
-      fail_message: >
-        'Study or Site code in ID does not match the expected settings.'
-

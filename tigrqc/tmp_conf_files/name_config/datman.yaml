@@ -1,0 +1,70 @@
+# dm_patterns = {
+#     'project': r'(?P<project>[^_]+)',
+#     'site': r'(?P<site>[^_]+)',
+#     'subid': r'(?!PHA)(?P<timepoint>[^_]+)',
+#     'pha_subid': r'(?P<timepoint>(?P<pha_type>[A-Z]{3})(?P<id>[0-9]{4,8}))',
+#     'tp_num': r'(?P<tp_num>[^_]+)',
+#     'attempt': r'(?!MR)(?!SE)(?P<attempt>[^_]+)',
+#     'tag': r'(?P<tag>[^_]+)',
+#     'series': r'(?P<series>[^_]+)',
+#     'description': r'(?P<description>[^_]+)',
+# }
+
+# dm_templates = {
+#     'short_id': '{project}_{site}_{subid}',
+#     'med_id': '{project}_{site}_{subid}_{tp_num}',
+#     'long_id': '{project}_{site}_{subid}_{tp_num}_{attempt}',
+#     'phantom': '{project}_{site}(?P<pha>_PHA_){pha_subid}',
+#     'fname': '(?P<file_name>{long_id}_{tag}_{series}_{description})',
+#     'phantom_fname': '(?P<file_name>{phantom}_{tag}_{series}_{description})'
+# }
+
+# Make this simpler. Take just the regex, then in code wrap it in group.
+# Make clear in documentation that each defined item must have a unique name.
+# ... can't. Too much potential for fuckup?
+fields:
+  project: '(?P<project>[^_]+)'
+  site: '(?P<site>[^_]+)'
+  subid: '(?!PHA)(?P<timepoint>[^_]+)'
+  pha_subid: '(?P<timepoint>(?P<pha_type>[A-Z]{3})(?P<id>[0-9]{4,8}))'
+  tp_num: '(?P<tp_num>[^_]+)'
+  attempt: '(?!MR)(?!SE)(?P<attempt>[^_]+)'
+  tag: '(?P<tag>[^_]+)'
+  series: '(?P<series>[^_]+)'
+  description: '(?P<description>[^_]+)'
+
+templates:
+  short_id: '{project}_{site}_{subid}'
+  med_id: '{short_id}_{tp_num}'
+  long_id: '{med_id}_{attempt}'
+  # Embed the <pha> group in pha_subid...
+  phantom_id: '{project}_{site}(?P<pha>_PHA_){pha_subid}'
+  fname: '(?P<file_name>{long_id}_{tag}_{series}_{description})'
+  phantom_fname: '(?P<file_name>{phantom_id}_{tag}_{series}_{description})'
+
+
+# Need a mapping between field/component names and database columns, if they
+# don't match. Can duplicate (e.g. subid = subject_id and pha_subid = subject_id)
+field_map:
+  subid: subject_id
+  pha_subid: subject_id
+
+# So... expose a dictionary of column names that need to be populated for a
+# standalone dataset (timepoints only, series included... diff requirements)
+# and make it clear to user they can use other names as long as they give mapping
+
+validation:
+    # These two validators should maybe be on the naming scheme and
+    # get applied to every dataset using the naming scheme
+    # since the naming scheme determines whether phantoms exist
+    # and whether site/study are even part of an ID.
+    - use: validate_all_phantom_or_all_subject_data
+      fail_message: >
+        'Timepoint contains mix of phantom and human data. Should be one or the other.'
+
+    - use: validate_id_fields_match_expected
+      args:
+        check_study: True
+        check_site: True
+      fail_message: >
+        'Study or Site code in ID does not match the expected settings.'
