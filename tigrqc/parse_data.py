@@ -256,35 +256,70 @@ def collect_files(start_path, find_conf):
         if not path.is_file():
             continue
 
-        dir_parts = path.relative_to(start_path).parts[:-1]  # dir components only
+        dir_parts = path.relative_to(start_path).parts[:-1]
 
-        if _matches_any_entry(path, dir_parts, find_conf):
-            files.append(path)
+        result = _parse_file(path, dir_parts, find_conf)
+
+        if result:
+            files.append(result)
         else:
-            fails.append(path)
+            fails.append(
+                f'Unrecognized file - {path}'
+            )
 
     return files, fails
 
 
-def _matches_any_entry(path: Path, dir_parts: tuple[str, ...], entries: list[dict]) -> bool:
-    for entry in entries:
-        if not entry["pattern"].match(path.name):
-            continue
+def _parse_file(path, dir_parts, find_conf):
+    parsed = None
+    for entry in find_conf:
+        match = entry['pattern'].match(path.name)
+        if match:
+            parsed = match.groupdict()
+            parsed['path'] = path
+            parsed['label'] = entry['label']
+            break
 
-        append_path = entry.get("append_path")
-        if append_path is None:
-            return True  # no directory constraint, filename match is enough
+    # This file doesn't match any expected file type
+    if not parsed:
+        return None
 
-        if _prefix_matches(dir_parts, append_path):
-            return True
+    append_path = entry.get('append_path')
+    if append_path:
+        # sub-path must match too
+        if len(dir_parts) != len(append_path):
+            return None
 
-    return False
+        for part, alternatives in zip(dir_parts, append_path):
+            subdir_match = None
+            for alt in alternatives:
+                m = alt.match(part)
+                if m:
+                    subdir_match = m
+                    break
 
+            if not subdir_match:
+                return None
 
-def _prefix_matches(dir_parts: tuple[str, ...], append_path: list[list]) -> bool:
-    if len(dir_parts) != len(append_path):
-        return False
-    return all(
-        any(pat.match(part) for pat in alternatives)
-        for part, alternatives in zip(dir_parts, append_path)
-    )
+            parsed = {**parsed, **subdir_match.groupdict()}
+
+    load_conf = entry.get('load_vals')
+    if not load_conf:
+        return parsed
+
+    if load_conf['format'] == 'json':
+        # At this point the path is relative. Should probably have an absolute
+        # and confirmed safe path (source dirs are confirmed to be safe so
+        # maybe fine as long as not relative)
+        contents = read_json(path)
+    else:
+        # Other formats go here, unrecognize should be an error.
+        contents = {}
+
+    # Need to declare required or optional values to read...
+    # Also need to report failure here somehow.
+    for file_key, store_key in load_conf['values'].items():
+        value = contents.get(file_key)
+        parsed[store_key] = value
+
+    return parsed
