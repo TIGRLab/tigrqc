@@ -95,7 +95,7 @@ description: >
 # Each entry is a directory level that must match the regex given.
 # The endpoint gets saved as a shorthand reference for each subject's entire data.
 timepoint_dir:
-    - ['^{med_id}$', '^{phantom}$']
+    - ['^{med_id}$', '^{phantom_id}$']
 
 find:
     - label: raw_scan
@@ -130,8 +130,12 @@ find:
 # Can toggle behavior of find or run entire functions and report issues
 # or fail entirely on issues
 validation:
-    - use: validate_nifti_and_sidecar_exist_per_series
-      group_by: file_name
+    - use: validate_series_outputs
+      scope:
+        - series
+      args:
+        group_by: ['fname']
+        required_labels: ['raw_scan', 'sidecar']
       # The fail message should be able to use components/templates...
       fail_message: >
         'Missing nifti and/or sidecar for series.'

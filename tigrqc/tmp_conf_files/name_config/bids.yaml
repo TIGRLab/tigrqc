@@ -30,7 +30,14 @@ templates:
 
 validation:
     # Merges with the dataset config when its loaded + files are parsed.
-    - use: validate_id_fields_match_expected
+    # This can probably do timepoint only... just to catch data that starts
+    # misnamed
+    # Also, allow user to toggle whether it's a hard fail or just a report
+    # and keep working sort of situation...
+    - use: validate_id_fields_match_expected_values
+      scope:
+        - timepoint
+        - series
       args:
         check_site: True
 

@@ -23,24 +23,26 @@
 # Make clear in documentation that each defined item must have a unique name.
 # ... can't. Too much potential for fuckup?
 fields:
-  project: '(?P<project>[^_]+)'
-  site: '(?P<site>[^_]+)'
-  subid: '(?!PHA)(?P<timepoint>[^_]+)'
-  pha_subid: '(?P<timepoint>(?P<pha_type>[A-Z]{3})(?P<id>[0-9]{4,8}))'
-  tp_num: '(?P<tp_num>[^_]+)'
-  attempt: '(?!MR)(?!SE)(?P<attempt>[^_]+)'
-  tag: '(?P<tag>[^_]+)'
-  series: '(?P<series>[^_]+)'
-  description: '(?P<description>[^_]+)'
+  project: '[^_]+'
+  site: '[^_]+'
+  subid: '(?!PHA)[^_]+'
+  pha_tag: 'PHA'
+  pha_type: '[A-Z]{3}'
+  pha_id: '[0-9]{4,8}'
+  tp_num: '[^_]+'
+  attempt: '(?!MR)(?!SE)[^_]+'
+  tag: '[^_]+'
+  series: '[^_]+'
+  description: '[^_]+'
 
 templates:
+  pha_subid: '{pha_tag}_{pha_type}{pha_id}'
   short_id: '{project}_{site}_{subid}'
   med_id: '{short_id}_{tp_num}'
   long_id: '{med_id}_{attempt}'
-  # Embed the <pha> group in pha_subid...
-  phantom_id: '{project}_{site}(?P<pha>_PHA_){pha_subid}'
-  fname: '(?P<file_name>{long_id}_{tag}_{series}_{description})'
-  phantom_fname: '(?P<file_name>{phantom_id}_{tag}_{series}_{description})'
+  phantom_id: '{project}_{site}_{pha_subid}'
+  fname: '{long_id}_{tag}_{series}_{description}'
+  phantom_fname: '{phantom_id}_{tag}_{series}_{description}'
 
 
 # Need a mapping between field/component names and database columns, if they
@@ -58,11 +60,17 @@ validation:
     # get applied to every dataset using the naming scheme
     # since the naming scheme determines whether phantoms exist
     # and whether site/study are even part of an ID.
-    - use: validate_all_phantom_or_all_subject_data
+    - use: validate_all_human_or_all_phantom_data
+      scope:
+        - series
+      args: {}
       fail_message: >
         'Timepoint contains mix of phantom and human data. Should be one or the other.'
 
-    - use: validate_id_fields_match_expected
+    - use: validate_id_fields_match_expected_values
+      scope:
+        - timepoint
+        - series
       args:
         check_study: True
         check_site: True

@@ -10,14 +10,6 @@ timepoint_dir:
     - ['^{subject}$']
     - ['^{session}$', '^{data_type}$']
 
-# Runs after timepoint_dir collection, before file collection
-dir_validation:
-  - use: validate_bids_dir_structure
-    args:
-      # Continue processing sessions even if bad directories / mix of datatype
-      # and sessions exist
-      pass_sessions: True
-
 append_path:
     - ['^{data_type}$']
 
@@ -39,20 +31,34 @@ find:
     - label: bval
       pattern: '^{fname}.bval$'
 
-group_by:
-    - file_name
+# group_by:
+#     - file_name
 
 validation:
+
     # Be clearer that this just checking the optional ses/data_type layout
     # and finding the correct parent dir.
     # Maybe this is better as a post-processing step...
-    - use: validate_bids_structure
+    - use: validate_bids_dir_structure
+      scope:
+        - timepoint
+      args:
+        # Continue processing sessions even if bad directories / mix of datatype
+        # and sessions exist
+        pass_sessions: True
       # This is probably not needed actually
       fail_message: >
         'Invalid bids folder structure.'
 
-    - use: validate_nifti_and_sidecar_exist_per_series
-      group_by: file_name
+    - use: validate_series_outputs
+      scope:
+        - series
+      args:
+        group_by: ['fname']
+        required_labels: ['raw_scan', 'sidecar']
+        share_fields: ['series', 'description']
+    # - use: validate_nifti_and_sidecar_exist_per_series
+    #   group_by: file_name
 
     # - use: validate_all_phantom_or_all_subject_data
     #   fail_message: >

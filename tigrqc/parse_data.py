@@ -8,6 +8,9 @@ import yaml
 
 from pathlib import Path
 
+from tigrqc.models import (Timepoint, Attempt, Series, SourceDir, TimepointDir,
+                           File, InvalidData, get_or_create)
+
 # from pydantic import BaseModel, Field, field_validator
 
 
@@ -22,7 +25,7 @@ from pathlib import Path
 #     """
 
 # Yaml for now, accept json etc. later too.
-def read_name_convention(conf_path: Path):
+def read_yaml(conf_path: Path):
     """Read and validate a name convention config file
 
     To do:
@@ -43,10 +46,31 @@ def read_json(fname):
     return json.loads(fname.read_text(encoding='utf-8'))
 
 
-def make_and_validate(name_conf):
+def make_and_validate(config_path):
     """Fill and valid a name conf.
+
+    Take contents of config file and create a 'name_conf' populated regex map
     """
-    return
+    config = read_yaml(config_path)
+
+    name_conf = {}
+    for fname, re_str in config['fields'].items():
+        name_conf[fname] = create_field(fname, re_str)
+
+    for tname, re_str in config['templates'].items():
+        name_conf[tname] = create_template(tname, re_str, name_conf)
+
+    # Check that functions exist, scope is valid, and args are correct
+    validators = {}
+    for item in config.get('validation', {}):
+        scope = item['scope']
+        del item['scope']
+
+        for scope_type in scope:
+            # Maybe should be default dict
+            validators.setdefault(scope_type, []).append(item)
+
+    return name_conf, validators
 
 
 def create_field(fname, re_str):
@@ -93,12 +117,13 @@ def compile_path(path_regexes, name_conf):
     return result
 
 
-def load_dataset_conf(conf_path, name_conf):
+def load_dataset_conf(conf_path, name_conf, validators=None):
     """Read a dataset configuration file and validate it / handle its
     regexes.
     """
+    validators = validators or {}
     # Need generic file reading
-    contents = read_name_convention(conf_path)
+    contents = read_yaml(conf_path)
 
     # Fix timepoint_dir paths
     contents['timepoint_dir'] = compile_path(
@@ -109,6 +134,17 @@ def load_dataset_conf(conf_path, name_conf):
         contents['append_path'] = compile_path(
             contents['append_path'], name_conf
         )
+
+    # Collect validators by scope (the code that ultimately handles
+    # this must also verify they exist, their arguments are valid, their
+    # scopes are valid, etc.)
+    for item in contents.get('validation', {}):
+        scope = item['scope']
+        del item['scope']
+        for scope_type in scope:
+            validators.setdefault(scope_type, []).append(item)
+
+    contents['validation'] = validators
 
     # Need conditional here if 'find' is ever optional
     items = []
@@ -125,31 +161,19 @@ def load_dataset_conf(conf_path, name_conf):
             file_conf['append_path'] = []
 
         # pattern must be present, error handling needed
-        pat = file_conf['pattern'].format_map(name_conf)
-        file_conf['pattern'] = re.compile(pat)
+        # Must handle both plain pattern and list of patterns...
+        if not isinstance(file_conf['pattern'], list):
+            file_conf['pattern'] = [file_conf['pattern']]
+        patterns = []
+        for item in file_conf['pattern']:
+            pat = item.format_map(name_conf)
+            patterns.append(re.compile(pat))
+        file_conf['pattern'] = patterns
 
         items.append(file_conf)
 
     contents['find'] = items
     return contents
-
-
-def read_source_dir(source_dir, dataset_conf, name_conf):
-    """Use a name_conf and a dataset_conf to read a source_directory.
-    """
-    # Use timepoint_dir to find usable directories / report unusable
-
-    # Use find to locate specific files
-
-    # Use group_by to collect files and share attributes among them when
-    # needed.
-
-    # Use validators to sort through and find seemingly-usable but actually
-    # incorrect items.
-
-    # Then from whatever is left at final pass, make database items.
-    return
-
 
 
 def collect_dirs(start_dir, path_regexes, level=0, parsed=None, children=None):
@@ -193,13 +217,14 @@ def collect_dirs(start_dir, path_regexes, level=0, parsed=None, children=None):
     return matches, fails
 
 
-def validate_bids_dir_structure(matches, fails, pass_sessions=True):
+def validate_bids_dir_structure(matches, pass_sessions=True):
     """Validate that the sub-directories in each subject dir matches the
     bid convention. Report ones that don't and ensure correct directory
     is used when optional session sub-dir is omitted.
     """
     subjects = group_by_keys(matches, ['subject'])
 
+    fails = []
     matches = []
     for subject in subjects:
         subdirs = subjects[subject]
@@ -273,11 +298,15 @@ def collect_files(start_path, find_conf):
 def _parse_file(path, dir_parts, find_conf):
     parsed = None
     for entry in find_conf:
-        match = entry['pattern'].match(path.name)
+        for pattern in entry['pattern']:
+            match = pattern.match(path.name)
+            if match:
+                parsed = match.groupdict()
+                parsed['path'] = path
+                parsed['label'] = entry['label']
+                break
         if match:
-            parsed = match.groupdict()
-            parsed['path'] = path
-            parsed['label'] = entry['label']
+            # Dear god... please clean this up
             break
 
     # This file doesn't match any expected file type
@@ -323,3 +352,169 @@ def _parse_file(path, dir_parts, find_conf):
         parsed[store_key] = value
 
     return parsed
+
+
+def validate_series_outputs(
+        files, group_by=['fname'],
+        required_labels=['raw_scan', 'sidecar'],
+        share_fields=None,
+):
+    """Confirm that output files per series contain all expected files and attributes.
+
+    For raw data for example, every series must produce a sidecar and nifti and
+    every file must contain series number and description info.
+
+    Anything not a 'required_type' is an optional file (because the regexes
+    themselves have already filtered out others)
+    """
+    # Make required_labels a dict that details num expected (optionally,
+    # -1 for 1+)
+    share_fields = share_fields or []
+
+    series = group_by_keys(files, group_by)
+
+    passes = []
+    fails = []
+    for group, file_group in series.items():
+        # Validate all required file types exist per file group
+        missing_labels = []
+        for label in required_labels:
+            if not any(item['label'] == label for item in file_group):
+                missing_labels.append(label)
+
+        if missing_labels:
+            fails.append(f'{group} missing required file types: {missing_labels}')
+            continue
+
+        if not share_fields:
+            passes.extend(file_group)
+            continue
+
+        missing_fields = []
+        mismatched_fields = []
+        for field in share_fields:
+            matches = [item for item in file_group if field in item]
+            if not matches:
+                missing_fields.append(field)
+                continue
+            value = matches[0][field]
+            if len(matches) > 1:
+                # This may need to be more complex if a field value can
+                # be anything but a string/int/path (e.g. lists... with same
+                # items in diff order...)
+                if not all(item[field] == value for item in matches):
+                    mismatched_fields.append(field)
+                    continue
+
+            for item in file_group:
+                item[field] = value
+
+        if missing_fields:
+            fails.append(
+                f'{group} - missing expected fields {missing_fields}'
+            )
+        if mismatched_fields:
+            fails.append(
+                f'{group} - contains conflicting values for some fields {mismatched_fields}'
+            )
+
+        if not missing_fields and not mismatched_fields:
+            passes.extend(file_group)
+
+    return passes, fails
+
+
+# def validate_id_fields_match_expected_values(
+#         items, study_conf, match_site=False, match_study=False
+# ):
+#     """Checks that actual observed field values match configured values.
+#     """
+#     # How will this handle studies that have multiple study codes with
+#     # their own restricted site values... i.e. STU1_SIT1 is ok but STU1_SIT2 not
+#     # even though another code in the study allows SIT2
+#     passes = []
+#     fails = []
+
+#     if match_study:
+
+
+def read_source_dir(source_path, name_conf_path, dataset_conf_path):
+    """Read all data from a directory and create/update database records.
+    """
+    # Prep naming convention info (this final object should be the
+    # input once past prototype phase, i.e. do this elsewhere/load from db)
+    name_conf, validators = make_and_validate(name_conf_path)
+    # This should handle validators also. Must have dict with scoping...
+    # Also need to figure out how to validate the input args to validators.
+    dataset_conf = load_dataset_conf(dataset_conf_path, name_conf, validators)
+
+    timepoint_dirs, tp_fails = collect_dirs(
+        source_path, dataset_conf['timepoint_dir']
+    )
+
+    # Run timepoint post processors (?)
+
+    # Run timepoint validators here, if any
+    # By this point all validator function names must have been checked
+    # to avoid typos etc.
+    tp_validators = dataset_conf.get('validation', {}).get('timepoint', [])
+    for entry in tp_validators:
+        func = VALIDATORS[entry['use']]
+        # Args may be optional...
+        # Enable configurable error messages?
+        timepoint_dirs, validator_fails = func(
+            timepoint_dirs,
+            **entry['args']
+        )
+        tp_fails.extend(validator_fails)
+
+    # Add timepoints to database here, unless conf says to 'defer'
+
+    # Find all items as requested
+    # use the database record here? (what about defer...)
+    files = []
+    file_fails = []
+    for timepoint in timepoint_dirs:
+        found, f_fails = collect_files(timepoint['path'], dataset_conf['find'])
+        files.extend(found)
+        file_fails.extend(f_fails)
+
+    # Run series post processors (e.g. field sharing...)
+
+    # Run series validators
+    series_validators = dataset_conf.get('validation', {}).get('series', [])
+    for entry in series_validators:
+        func = VALIDATORS[entry['use']]
+        files, validator_fails = func(
+            files,
+            **entry['args']
+        )
+        file_fails.extend(validator_fails)
+
+    # Run lookups (i.e. matching secondary data to primary)
+
+    # Add deferred timepoint entries to database
+
+    # Add series to database
+
+    return timepoint_dirs, files, tp_fails, file_fails
+
+
+def validate_id_fields_match_expected_values(items, check_site=False, check_study=False):
+    """Placeholder until I'm ready to deal with this.
+    """
+    return items, []
+
+
+def validate_all_human_or_all_phantom_data(items):
+    """Placeholder
+    """
+    return items, []
+
+
+VALIDATORS = {
+    'validate_id_fields_match_expected_values': validate_id_fields_match_expected_values,
+    'validate_bids_dir_structure': validate_bids_dir_structure,
+    'validate_series_outputs': validate_series_outputs,
+    'validate_all_human_or_all_phantom_data': validate_all_human_or_all_phantom_data,
+}
