@@ -23,9 +23,11 @@
 # Make clear in documentation that each defined item must have a unique name.
 # ... can't. Too much potential for fuckup?
 fields:
-  project: '[^_]+'
-  site: '[^_]+'
+  project_id: '[^_]+'
+  site_id: '[^_]+'
   subid: '(?!PHA)[^_]+'
+  # Gotta document that to mark something as a phantom you just need 'pha_tag'
+  # to exist in the parsed output (doesn't matter what it evals to)
   pha_tag: 'PHA'
   pha_type: '[A-Z]{3}'
   pha_id: '[0-9]{4,8}'
@@ -36,20 +38,23 @@ fields:
   description: '[^_]+'
 
 templates:
-  pha_subid: '{pha_tag}_{pha_type}{pha_id}'
-  short_id: '{project}_{site}_{subid}'
+  short_id: '{project_id}_{site_id}_{subid}'
   med_id: '{short_id}_{tp_num}'
   long_id: '{med_id}_{attempt}'
-  phantom_id: '{project}_{site}_{pha_subid}'
-  fname: '{long_id}_{tag}_{series}_{description}'
-  phantom_fname: '{phantom_id}_{tag}_{series}_{description}'
+  pha_subfield: '{pha_type}{pha_id}'
+  pha_subid: '{pha_tag}_{pha_subfield}'
+  phantom_id: '{project_id}_{site_id}_{pha_subid}'
+  sub_fname: '{long_id}_{tag}_{series}_{description}'
+  pha_fname: '{phantom_id}_{tag}_{series}_{description}'
 
 
 # Need a mapping between field/component names and database columns, if they
 # don't match. Can duplicate (e.g. subid = subject_id and pha_subid = subject_id)
 field_map:
   subid: subject_id
-  pha_subid: subject_id
+  pha_subfield: subject_id
+  sub_fname: fname
+  pha_fname: fname
 
 # So... expose a dictionary of column names that need to be populated for a
 # standalone dataset (timepoints only, series included... diff requirements)

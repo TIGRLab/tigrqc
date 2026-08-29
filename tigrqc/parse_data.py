@@ -52,13 +52,18 @@ def make_and_validate(config_path):
     Take contents of config file and create a 'name_conf' populated regex map
     """
     config = read_yaml(config_path)
+    field_map = config.get('field_map', {})
 
     name_conf = {}
     for fname, re_str in config['fields'].items():
-        name_conf[fname] = create_field(fname, re_str)
+        # Allow users to rename groups as needed
+        group_name = field_map.get(fname, fname)
+        name_conf[fname] = create_field(group_name, re_str)
 
     for tname, re_str in config['templates'].items():
-        name_conf[tname] = create_template(tname, re_str, name_conf)
+        # Allow users to rename groups as needed
+        group_name = field_map.get(tname, tname)
+        name_conf[tname] = create_template(group_name, re_str, name_conf)
 
     # Check that functions exist, scope is valid, and args are correct
     validators = {}
@@ -127,7 +132,7 @@ def load_dataset_conf(conf_path, name_conf, validators=None):
 
     # Fix timepoint_dir paths
     contents['timepoint_dir'] = compile_path(
-        contents['timepoint_dir'], name_conf
+        contents.get('timepoint_dir', []), name_conf
     )
 
     if 'append_path' in contents:
@@ -146,37 +151,48 @@ def load_dataset_conf(conf_path, name_conf, validators=None):
 
     contents['validation'] = validators
 
-    # Need conditional here if 'find' is ever optional
-    items = []
-    for file_conf in contents['find']:
-        # 'append_path' overrides top level rather than extending it
-        if 'append_path' in file_conf:
-            file_conf['append_path'] = compile_path(
-                file_conf['append_path'], name_conf
-            )
-        elif 'append_path' in contents:
-            # Slot in the path from top level
-            file_conf['append_path'] = contents['append_path']
-        else:
-            file_conf['append_path'] = []
+    accepted_file_types = [
+        'dataset_files',
+        'timepoint_files',
+        'attempt_files',
+        'series_files'
+    ]
+    for file_type in accepted_file_types:
+        entries = contents.get(file_type, [])
+        items = []
+        for file_conf in entries:
+            if 'append_path' in file_conf:
+                file_conf['append_path'] = compile_path(
+                    file_conf['append_path'], name_conf
+                )
+            elif 'append_path' in contents:
+                # Slot in the path from top level
+                file_conf['append_path'] = contents['append_path']
+            else:
+                file_conf['append_path'] = []
 
-        # pattern must be present, error handling needed
-        # Must handle both plain pattern and list of patterns...
-        if not isinstance(file_conf['pattern'], list):
-            file_conf['pattern'] = [file_conf['pattern']]
-        patterns = []
-        for item in file_conf['pattern']:
-            pat = item.format_map(name_conf)
-            patterns.append(re.compile(pat))
-        file_conf['pattern'] = patterns
+            # pattern must be present, error handling needed
+            # Must handle both plain pattern and list of patterns...
+            if not isinstance(file_conf['pattern'], list):
+                file_conf['pattern'] = [file_conf['pattern']]
+            patterns = []
+            for item in file_conf['pattern']:
+                pat = item.format_map(name_conf)
+                patterns.append(re.compile(pat))
+            file_conf['pattern'] = patterns
 
-        items.append(file_conf)
+            items.append(file_conf)
 
-    contents['find'] = items
+        contents[file_type] = items
+
     return contents
 
 
 def collect_dirs(start_dir, path_regexes, level=0, parsed=None, children=None):
+    if not path_regexes:
+        # No paths required ??
+        return [], []
+
     children = children or start_dir.iterdir()
     regexes = path_regexes[level]
     parsed = parsed or {}
@@ -441,6 +457,11 @@ def validate_series_outputs(
 def read_source_dir(source_path, name_conf_path, dataset_conf_path):
     """Read all data from a directory and create/update database records.
     """
+    # Placeholder until I'm ready to start populating the DB
+    results = {
+        'fails': []
+    }
+
     # Prep naming convention info (this final object should be the
     # input once past prototype phase, i.e. do this elsewhere/load from db)
     name_conf, validators = make_and_validate(name_conf_path)
@@ -448,7 +469,27 @@ def read_source_dir(source_path, name_conf_path, dataset_conf_path):
     # Also need to figure out how to validate the input args to validators.
     dataset_conf = load_dataset_conf(dataset_conf_path, name_conf, validators)
 
-    timepoint_dirs, tp_fails = collect_dirs(
+    ####################################
+    # Get dataset-wide files first.
+    found, fails = collect_files(source_path, dataset_conf['dataset_files'])
+    # Run validators, if any apply
+    dataset_validators = dataset_conf.get('validation', {}).get('dataset', [])
+    for entry in dataset_validators:
+        func = VALIDATORS[entry['use']]
+        found, validator_fails = func(
+            found,
+            **entry.get('args', {})
+        )
+        fails.extend(validator_fails)
+
+    results['dataset_files'] = found
+    results['dataset_fails'] = fails
+
+    ###################################
+    # Retrieve timepoint dirs
+    # How to defer dir record creation when more info is required from found
+    # files?
+    timepoint_dirs, tp_dir_fails = collect_dirs(
         source_path, dataset_conf['timepoint_dir']
     )
 
@@ -457,6 +498,7 @@ def read_source_dir(source_path, name_conf_path, dataset_conf_path):
     # Run timepoint validators here, if any
     # By this point all validator function names must have been checked
     # to avoid typos etc.
+    # Must skip this when no timepoints required yet (or at all...)
     tp_validators = dataset_conf.get('validation', {}).get('timepoint', [])
     for entry in tp_validators:
         func = VALIDATORS[entry['use']]
@@ -466,7 +508,37 @@ def read_source_dir(source_path, name_conf_path, dataset_conf_path):
             timepoint_dirs,
             **entry['args']
         )
-        tp_fails.extend(validator_fails)
+        tp_dir_fails.extend(validator_fails)
+
+    results['timepoint_dirs'] = timepoint_dirs
+    results['timepoint_dirs_fails'] = tp_dir_fails
+
+    ####################################
+    # Retrieve timepoint files
+
+    # Sort items by whether they should be nested in timepoint_dir or not
+    tp_entries, stray_entries = sort_file_entries(
+        dataset_conf.get('timepoint_files', []),
+        dataset_conf.get('timepoint_dirs', [])
+    )
+    tp_validators = dataset_conf.get('validation', []).get('timepoint', [])
+
+    tp_strays, tp_stray_fails = collect_files(source_path, stray_entries)
+    # Validation goes here
+    results['tp_strays'] = tp_strays
+    results['tp_stray_fails'] = tp_stray_fails
+
+    # This won't group files by timepoint_dir currently? Maybe change
+    # collect_files to embed parent (in addition to making paths relative)
+    tp_files = []
+    tp_file_fails = []
+    for timepoint in timepoint_dirs:
+        found, f_fails = collect_files(timepoint['path'], tp_entries)
+        tp_files.extend(found)
+        tp_file_fails.extend(f_fails)
+    # Validation goes here
+    results['tp_files'] = tp_files
+    results['tp_file_fails'] = tp_file_fails
 
     # Add timepoints to database here, unless conf says to 'defer'
 
@@ -512,9 +584,35 @@ def validate_all_human_or_all_phantom_data(items):
     return items, []
 
 
+def validator_placeholder(items):
+    print(f'Validator ran on {len(items)} objects.')
+    return items, []
+
+
 VALIDATORS = {
     'validate_id_fields_match_expected_values': validate_id_fields_match_expected_values,
     'validate_bids_dir_structure': validate_bids_dir_structure,
     'validate_series_outputs': validate_series_outputs,
     'validate_all_human_or_all_phantom_data': validate_all_human_or_all_phantom_data,
+    'validator_placeholder': validator_placeholder
 }
+
+
+def sort_file_entries(entries, dir_conf):
+    """Separate entries that should be stored in a timepoint_dir from 'stray'
+    entries that can reside anywhere but still definitely hook to a specific
+    timepoint/attempt/series.
+    """
+    if not dir_conf:
+        # If the user didn't configure timepoint_dir it's safe to assume
+        # all files are 'stray'
+        return [], entries
+
+    tp_entries = []
+    stray_entries = []
+    for item in entries:
+        if item.get('ignore_tp_dir', False):
+            stray_entries.append(item)
+        else:
+            tp_entries.append(item)
+    return tp_entries, stray_entries

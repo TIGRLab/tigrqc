@@ -1,0 +1,18 @@
+id: mriqc_dataset_files
+description: >
+    Import only the dataset files for mriqc
+
+append_path:
+    - ['^logs$']
+
+dataset_files:
+    - label: exec_config
+      pattern: '^config-.*\.toml$'
+
+    - label: exec_log
+      pattern: '^mriqc-.*\.log$'
+
+validation:
+    - use: validator_placeholder
+      scope:
+        - dataset

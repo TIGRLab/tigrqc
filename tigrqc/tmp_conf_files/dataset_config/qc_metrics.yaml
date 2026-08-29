@@ -1,0 +1,27 @@
+id: datman_qc_metrics
+version: 1.0.0
+description: >
+  Load datman-style QC outputs
+
+# Phantom and human require two different configurations, because even
+# when we made phantom metrics they were wildly different format.
+# mriqc may be the same... how to allow merging when two different
+# parsers apply to same directory?
+timepoint_dir:
+    - ['^{med_id}$']
+
+# Need an 'ignore' option somewhere. Maybe entry per 'valid-but-not-needed'
+# file with an optional 'ignore' field that indicates to discard it?
+# but then time wasted matching...
+# - Manifest files.
+
+find:
+  - label: qc_image
+    pattern:
+      - '{sub_fname}.*\.png'
+      - '{pha_fname}.*\.png'
+
+  - label: metric_file
+    pattern:
+      - '{sub_fname}.*\.csv'
+      - '{pha_fname}.*\.csv'

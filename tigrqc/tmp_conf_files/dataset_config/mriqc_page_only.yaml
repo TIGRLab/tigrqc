@@ -1,0 +1,19 @@
+id: mriqc_24
+description: >
+    Import just the top-level html files from mriqc 24.X.X
+
+# None, htmls are top level. But extra files exist in other dirs.
+timepoint_dir: []
+
+dataset_files: []
+
+timepoint_files: []
+
+attempt_files: []
+
+series_files:
+    - label: qc_page
+      pattern: '^{fname}.html'
+      lookup:
+        scope: series
+        match: [fname]

@@ -22,6 +22,7 @@ description: >
     MRIQC HTML reports. Import all series html pages found in the top
     level of the source directory.
 
+# is this actually needed if data can 'hang' off a timepoint or defer?
 preconditions:
     # scan_data_exists must be a function I write.
     #   -> Ensure at least one series has been made?

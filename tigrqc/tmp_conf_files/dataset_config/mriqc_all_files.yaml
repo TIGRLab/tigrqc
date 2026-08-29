@@ -1,0 +1,31 @@
+id: mriqc_24
+description: >
+    Import all mriqc data for version 24.X.X
+
+# None, htmls are top level. But extra files exist in other dirs.
+timepoint_dir: []
+
+# Applies to all except dataset_files
+append_path:
+    - ['^{subject}$']
+
+find:
+    - label: qc_page
+      # Top level, no append needed for this file.
+      append_path: []
+      # Possibly scope to timepoint here... Collection of pages per timepoint
+      # but each page is for a single series so...
+      pattern: '^{fname}.html'
+
+    - label: qc_image
+      append_path:
+        - ['^{subject}$']
+        - ['figures']
+      pattern: '^{fname}.svg'
+
+    - label: metadata
+      append_path:
+        - ['^{subject}$']
+        - ['^{session}$']
+        - ['^{data_type}$']
+      pattern: '^{fname}.json'

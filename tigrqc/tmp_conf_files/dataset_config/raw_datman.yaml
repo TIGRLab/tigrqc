@@ -100,22 +100,22 @@ timepoint_dir:
 find:
     - label: raw_scan
       pattern:
-        - '^{fname}.nii*'
+        - '^{sub_fname}.nii*'
         - '^{phantom_fname}.nii*'
 
     - label: sidecar
       pattern:
-        - '^{fname}.json$'
+        - '^{sub_fname}.json$'
         - '^{phantom_fname}.json$'
 
     - label: bvec
       pattern:
-        - '^{fname}.bvec$'
+        - '^{sub_fname}.bvec$'
         - '^{phantom_fname}.bvec$'
 
     - label: bval
       pattern:
-        - '^{fname}.bval$'
+        - '^{sub_fname}.bval$'
         - '^{phantom_fname}.bval$'
 
 # Optionally group files together for validation / easier processing.

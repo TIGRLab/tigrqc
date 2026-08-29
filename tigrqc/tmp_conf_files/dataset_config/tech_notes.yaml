@@ -1,0 +1,23 @@
+# Don't need to incorporate name scheme into ID in the database, since
+# when dataset is declared the name convention is chosen.
+id: datman_tech_notes
+version: 1.0.0
+description: >
+    Discover and load tech notes stored in the datman organizational style.
+
+
+# Important to note diff between this and append dir.
+# timepoint_dir can help gather info to make a timepoint etc. in database
+# append_dir just restricts files that may match / allows further validation
+# of per-subject paths.
+timepoint_dir:
+    - ['^{long_id}$', '^{phantom_id}$']
+
+find:
+    - label: tech_notes
+      # Not all files hook onto a series...
+      scope:
+        - timepoint
+      pattern:
+        - "(?i:tech).*\\.pdf"
+        - ".*(?i:notes?)\\.pdf"
