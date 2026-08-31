@@ -2,30 +2,61 @@ id: mriqc_24
 description: >
     Import all mriqc data for version 24.X.X
 
-# None, htmls are top level. But extra files exist in other dirs.
-timepoint_dir: []
-
-# Applies to all except dataset_files
-append_path:
+# Contains figures for all timepoints... so the directory belongs to
+# the entire subject rather than a specific timepoint or attempt
+timepoint_dir:
     - ['^{subject}$']
 
+# Scope can be:
+#   - dataset
+#   - timepoint
+#   - attempt
+#   - series
+#
+# If timepoint_dir is defined all except dataset are assumed to be nested within
+# timepoint_dir, unless stray_file: True is set.
+#
+# append_dir at the top level is applied to all entries. Per entry override.
 find:
+    - label: dataset_description
+      scope: dataset
+      pattern: '^dataset_description.json$'
+
+    - label: exec_config
+      scope: dataset
+      append_path:
+        - ['^logs$']
+      pattern: '^config-.*\.toml$'
+
+    - label: exec_log
+      scope: dataset
+      append_path:
+        - ['^logs$']
+      pattern: '^mriqc-.*\.log$'
+
+    - label: qc_img
+      scope: timepoint
+      append_path:
+        - ['^figures$']
+      pattern: '.*.svg'
+
     - label: qc_page
-      # Top level, no append needed for this file.
-      append_path: []
-      # Possibly scope to timepoint here... Collection of pages per timepoint
-      # but each page is for a single series so...
-      pattern: '^{fname}.html'
+      # Means ignore timepoint_dir if it's defined
+      stray_file: True
+      scope: series
+      pattern: '^{fname}.html$'
 
-    - label: qc_image
+    - label: sidecar
+      scope: series
       append_path:
-        - ['^{subject}$']
-        - ['figures']
-      pattern: '^{fname}.svg'
-
-    - label: metadata
-      append_path:
-        - ['^{subject}$']
         - ['^{session}$']
         - ['^{data_type}$']
-      pattern: '^{fname}.json'
+      pattern: '^{fname}.json$'
+      load_vals:
+        format: json
+        values:
+          - keys: ["bids_meta", "SeriesDescription"]
+            store: description
+
+          - keys: ["bids_meta", "SeriesNumber"]
+            store: series

@@ -101,22 +101,22 @@ find:
     - label: raw_scan
       pattern:
         - '^{sub_fname}.nii*'
-        - '^{phantom_fname}.nii*'
+        - '^{pha_fname}.nii*'
 
     - label: sidecar
       pattern:
         - '^{sub_fname}.json$'
-        - '^{phantom_fname}.json$'
+        - '^{pha_fname}.json$'
 
     - label: bvec
       pattern:
         - '^{sub_fname}.bvec$'
-        - '^{phantom_fname}.bvec$'
+        - '^{pha_fname}.bvec$'
 
     - label: bval
       pattern:
         - '^{sub_fname}.bval$'
-        - '^{phantom_fname}.bval$'
+        - '^{pha_fname}.bval$'
 
 # Optionally group files together for validation / easier processing.
 # This might need to be more complicated later...

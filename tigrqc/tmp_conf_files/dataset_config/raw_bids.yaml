@@ -14,6 +14,11 @@ append_path:
     - ['^{data_type}$']
 
 find:
+    - label: dataset_description
+      scope: dataset
+      append_path: []
+      pattern: '^dataset_description.json$'
+
     - label: raw_scan
       pattern: '^{fname}.nii*'
 
@@ -22,8 +27,11 @@ find:
       load_vals:
         format: json
         values:
-          SeriesNumber: series
-          SeriesDescription: description
+          - keys: ['SeriesNumber']
+            store: series
+
+          - keys: ['SeriesDescription']
+            store: description
 
     - label: bvec
       pattern: '^{fname}.bvec$'
@@ -41,7 +49,7 @@ validation:
     # Maybe this is better as a post-processing step...
     - use: validate_bids_dir_structure
       scope:
-        - timepoint
+        - timepoint_dir
       args:
         # Continue processing sessions even if bad directories / mix of datatype
         # and sessions exist

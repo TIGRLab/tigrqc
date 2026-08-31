@@ -151,39 +151,64 @@ def load_dataset_conf(conf_path, name_conf, validators=None):
 
     contents['validation'] = validators
 
-    accepted_file_types = [
-        'dataset_files',
-        'timepoint_files',
-        'attempt_files',
-        'series_files'
-    ]
-    for file_type in accepted_file_types:
-        entries = contents.get(file_type, [])
-        items = []
-        for file_conf in entries:
-            if 'append_path' in file_conf:
-                file_conf['append_path'] = compile_path(
-                    file_conf['append_path'], name_conf
-                )
-            elif 'append_path' in contents:
-                # Slot in the path from top level
-                file_conf['append_path'] = contents['append_path']
-            else:
-                file_conf['append_path'] = []
+    compiled_entries = []
+    for entry in contents.get('find', []):
+        if 'append_path' in entry:
+            entry['append_path'] = compile_path(
+                entry['append_path'], name_conf
+            )
+        elif 'append_path' in contents:
+            # use the top level append_path, if entry doesn't override
+            entry['append_path'] = contents['append_path']
+        else:
+            entry['append_path'] = []
 
-            # pattern must be present, error handling needed
-            # Must handle both plain pattern and list of patterns...
-            if not isinstance(file_conf['pattern'], list):
-                file_conf['pattern'] = [file_conf['pattern']]
-            patterns = []
-            for item in file_conf['pattern']:
-                pat = item.format_map(name_conf)
-                patterns.append(re.compile(pat))
-            file_conf['pattern'] = patterns
+        if not isinstance(entry['pattern'], list):
+            entry['pattern'] = [entry['pattern']]
 
-            items.append(file_conf)
+        patterns = []
+        for item in entry['pattern']:
+            pat = item.format_map(name_conf)
+            patterns.append(re.compile(pat))
 
-        contents[file_type] = items
+        entry['pattern'] = patterns
+        compiled_entries.append(entry)
+
+    contents['find'] = compiled_entries
+
+    # accepted_file_types = [
+    #     'dataset_files',
+    #     'timepoint_files',
+    #     'attempt_files',
+    #     'series_files'
+    # ]
+    # for file_type in accepted_file_types:
+    #     entries = contents.get(file_type, [])
+    #     items = []
+    #     for file_conf in entries:
+    #         if 'append_path' in file_conf:
+    #             file_conf['append_path'] = compile_path(
+    #                 file_conf['append_path'], name_conf
+    #             )
+    #         elif 'append_path' in contents:
+    #             # Slot in the path from top level
+    #             file_conf['append_path'] = contents['append_path']
+    #         else:
+    #             file_conf['append_path'] = []
+
+    #         # pattern must be present, error handling needed
+    #         # Must handle both plain pattern and list of patterns...
+    #         if not isinstance(file_conf['pattern'], list):
+    #             file_conf['pattern'] = [file_conf['pattern']]
+    #         patterns = []
+    #         for item in file_conf['pattern']:
+    #             pat = item.format_map(name_conf)
+    #             patterns.append(re.compile(pat))
+    #         file_conf['pattern'] = patterns
+
+    #         items.append(file_conf)
+
+    #     contents[file_type] = items
 
     return contents
 
@@ -616,3 +641,163 @@ def sort_file_entries(entries, dir_conf):
         else:
             tp_entries.append(item)
     return tp_entries, stray_entries
+
+
+def make_parseable(entry_list, timepoint_dir=None):
+    """Take a list of file entries and make them parseable.
+    """
+    timepoint_dir = timepoint_dir or []
+    sub_entries = []
+    parseable = []
+    for entry in entry_list:
+        scope = entry.get('scope', 'series')
+        is_stray = entry.get('stray_file', False)
+        if scope == 'dataset' or is_stray or not timepoint_dir:
+            dir_path = entry.get('append_path', [])
+            parseable.append((dir_path, entry))
+        else:
+            sub_entries.append((entry.get('append_path'), entry))
+
+    if timepoint_dir:
+        *fake_append_path, fake_pattern = timepoint_dir
+        tp_dir = {
+            'append_path': fake_append_path,
+            'pattern': fake_pattern,
+            'sub_entries': sub_entries
+        }
+        parseable.append((fake_append_path, tp_dir))
+    return parseable
+
+
+def make_tree(parseable_nodes):
+    files = {}
+    dirs = {}
+
+    for path, entry in parseable_nodes:
+        # If the exact same path/file regex applies to more than 1 entry it's
+        # an exception.
+        if path == []:
+            if 'sub_entries' in entry:
+                # This is a timepoint dir, recursively set up its children.
+                for alt_pattern in entry['pattern']:
+                    node = make_tree(entry['sub_entries'])
+                    node['tp_dir'] = True
+                    files[alt_pattern] = node
+            else:
+                for regex in entry['pattern']:
+                    if regex in files:
+                        # This should be an exception and caught earlier.
+                        print(f'Duplicate file pattern given: {regex}')
+                        continue
+                    files[regex] = entry
+        else:
+            # Gather every directory entry first before you recurse, to
+            # catch redundancies up front.
+            current_dir, *remaining = path
+            for alt_pattern in current_dir:
+                dirs.setdefault(alt_pattern, []).append((remaining, entry))
+
+    final_dirs = {}
+    for regex, entry in dirs.items():
+        node = make_tree(entry)
+        final_dirs[regex] = node
+
+    return {'items': files, 'dirs': final_dirs}
+
+# def create_nested_paths(find_items):
+#     """Take a list of tuples (append_path, entry) and create recursive
+#     entries for them.
+#     """
+#     dir_level = {}
+#     recurse = []
+#     for entry in find_items:
+#         if entry[0] == []:
+#             for pattern in entry[1]['patterns']:
+
+
+# from dataclasses import dataclass, field
+
+# @dataclass
+# class TreeNode:
+#     # File entries that may match at this level.
+#     files: list
+#     # Subdirectories that may be further traversed
+#     children: list
+#     # if this is a timepoint_dir, then this will be a second set of configuration
+#     # entries that may be nested within it.
+#     sub_entries: list
+#     # The regex pattern for a directory level. Only root node may be None.
+#     regex: re.Pattern = None
+
+# @dataclass
+# class FileMatch:
+#     path: Path
+#     match_entry: dict
+#     path_fields: dict
+
+# class TreeNode:
+#     """Turn configuration into a properly nested directory tree.
+#     """
+#     # file_entries = list of tuple(regex, entry)
+#     # children = list of TreeNode
+#     # save_dir = False -> True if it's a timepoint_dir. Stop traversal when
+#     #   found. It's 'leafy'.
+
+
+def parse_tree_source(source_path, conf_tree, collected=None):
+    """Use a tree version of the conf to identify correct and incorrect dir
+    items.
+    """
+    collected = collected or {}
+    found = {
+        'tp_dirs': [],
+        'files': [],
+    }
+    # This should be optional to gather.
+    fails = []
+
+    for item in source_path.iterdir():
+        entry = None
+        for item_regex in conf_tree['items']:
+            match = item_regex.match(item.name)
+            if match:
+                entry = match.groupdict()
+                entry['path'] = item
+                entry['conf'] = conf_tree['items'][item_regex]
+                break
+
+        if entry:
+            all_vals = {**collected, **entry}
+            # Found a match to a terminal item.
+            if entry['conf'].get('tp_dir', False):
+                found['tp_dirs'].append(all_vals)
+            else:
+                found['files'].append(all_vals)
+            continue
+
+        # No terminal item matched. If the item is not a dir, this is an error.
+        if not item.is_dir():
+            fails.append(f"Unknown file found - {item}")
+            continue
+
+        match = None
+        for dir_regex in conf_tree['dirs']:
+            m = dir_regex.match(item.name)
+            if m:
+                match = m
+                entry = {**collected, **match.groupdict()}
+                conf = conf_tree['dirs'][dir_regex]
+                break
+
+        if not match:
+            fails.append(f"Unknown directory found - {item}")
+            continue
+
+        # Collect files recursively from this directory
+        subdir_results, subdir_fails = parse_tree_source(item, conf, entry)
+        found['tp_dirs'].extend(subdir_results['tp_dirs'])
+        found['files'].extend(subdir_results['files'])
+        fails.extend(subdir_fails)
+
+    return found, fails
+
