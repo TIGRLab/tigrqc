@@ -25,3 +25,8 @@ class UserException(TigrQcException):
         self.level = level
         self.redirect = redirect
         super().__init__(err_msg)
+
+
+class FileReadException(TigrQcException):
+    """Raised when an attempt to read from or parse a file fails.
+    """

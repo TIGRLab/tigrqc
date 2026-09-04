@@ -51,7 +51,11 @@ find:
       append_path:
         - ['^{session}$']
         - ['^{data_type}$']
-      pattern: '^{fname}.json$'
+      # This adds a negative look behind to filter out the weird json
+      # 'timeseries' files that do not contain this metadata.
+      # 'timseries' was matching the 'suffix' part of fname and passing.
+      # Maybe document this trick for users.
+      pattern: '^{fname}(?<!timeseries).json$'
       load_vals:
         format: json
         values:
@@ -60,3 +64,18 @@ find:
 
           - keys: ["bids_meta", "SeriesNumber"]
             store: series
+
+ignore:
+    # Not sure whether to allow scope here or not. If 'scope' is just
+    # generally going to indicate 'level' of attachment or specifically
+    # dictate where to attach in database.
+    - scope: dataset
+      pattern: '.*-faketracking.csv'
+
+    - append_path:
+        - ['^{session}$']
+        - ['^{data_type}$']
+      # The validator should compile every single path and pattern piece
+      # at update/change time to catch errors like "nothing to repeat"
+      pattern: '.*_timeseries.*'
+

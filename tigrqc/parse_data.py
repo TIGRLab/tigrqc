@@ -10,6 +10,7 @@ from pathlib import Path
 
 from tigrqc.models import (Timepoint, Attempt, Series, SourceDir, TimepointDir,
                            File, InvalidData, get_or_create)
+from tigrqc.exceptions import FileReadException
 
 # from pydantic import BaseModel, Field, field_validator
 
@@ -175,6 +176,32 @@ def load_dataset_conf(conf_path, name_conf, validators=None):
         compiled_entries.append(entry)
 
     contents['find'] = compiled_entries
+
+    # This is identical to the block for find, so move to a function once
+    # confirmed everything is as expected
+    compiled_ignores = []
+    for entry in contents.get('ignore', []):
+        if 'append_path' in entry:
+            entry['append_path'] = compile_path(
+                entry['append_path'], name_conf
+            )
+        elif 'append_path' in contents:
+            entry['append_path'] = contents['append_path']
+        else:
+            entry['append_path'] = []
+
+        if not isinstance(entry['pattern'], list):
+            entry['pattern'] = [entry['pattern']]
+
+        patterns = []
+        for item in entry['pattern']:
+            pat = item.format_map(name_conf)
+            patterns.append(re.compile(pat))
+
+        entry['pattern'] = patterns
+        compiled_ignores.append(entry)
+
+    contents['ignore'] = compiled_ignores
 
     # accepted_file_types = [
     #     'dataset_files',
@@ -395,7 +422,7 @@ def _parse_file(path, dir_parts, find_conf):
     return parsed
 
 
-def validate_series_outputs(
+def validate_contains_nifti_and_sidecar(
         files, group_by=['fname'],
         required_labels=['raw_scan', 'sidecar'],
         share_fields=None,
@@ -617,38 +644,45 @@ def validator_placeholder(items):
 VALIDATORS = {
     'validate_id_fields_match_expected_values': validate_id_fields_match_expected_values,
     'validate_bids_dir_structure': validate_bids_dir_structure,
-    'validate_series_outputs': validate_series_outputs,
+    'validate_contains_nifti_and_sidecar': validate_contains_nifti_and_sidecar,
     'validate_all_human_or_all_phantom_data': validate_all_human_or_all_phantom_data,
     'validator_placeholder': validator_placeholder
 }
 
 
-def sort_file_entries(entries, dir_conf):
-    """Separate entries that should be stored in a timepoint_dir from 'stray'
-    entries that can reside anywhere but still definitely hook to a specific
-    timepoint/attempt/series.
-    """
-    if not dir_conf:
-        # If the user didn't configure timepoint_dir it's safe to assume
-        # all files are 'stray'
-        return [], entries
+# def sort_file_entries(entries, dir_conf):
+#     """Separate entries that should be stored in a timepoint_dir from 'stray'
+#     entries that can reside anywhere but still definitely hook to a specific
+#     timepoint/attempt/series.
+#     """
+#     if not dir_conf:
+#         # If the user didn't configure timepoint_dir it's safe to assume
+#         # all files are 'stray'
+#         return [], entries
 
-    tp_entries = []
-    stray_entries = []
-    for item in entries:
-        if item.get('ignore_tp_dir', False):
-            stray_entries.append(item)
-        else:
-            tp_entries.append(item)
-    return tp_entries, stray_entries
+#     tp_entries = []
+#     stray_entries = []
+#     for item in entries:
+#         if item.get('ignore_tp_dir', False):
+#             stray_entries.append(item)
+#         else:
+#             tp_entries.append(item)
+#     return tp_entries, stray_entries
 
 
-def make_parseable(entry_list, timepoint_dir=None):
+def make_parseable(entry_list, timepoint_dir=None, ignore_items=None):
     """Take a list of file entries and make them parseable.
     """
     timepoint_dir = timepoint_dir or []
+    ignore_items = ignore_items or []
     sub_entries = []
     parseable = []
+
+    # Setup each ignore item that is given and merge it into the entry list
+    for entry in ignore_items:
+        entry['ignore'] = True
+        entry_list.append(entry)
+
     for entry in entry_list:
         scope = entry.get('scope', 'series')
         is_stray = entry.get('stray_file', False)
@@ -743,10 +777,53 @@ def make_tree(parseable_nodes):
 #     # save_dir = False -> True if it's a timepoint_dir. Stop traversal when
 #     #   found. It's 'leafy'.
 
+FILE_READERS = {
+    'json': read_json,
+    'yaml': read_yaml,
+}
 
-def parse_tree_source(source_path, conf_tree, collected=None):
+def load_metadata(file_entry):
+    """Load in metadata from a file.
+    """
+    # This can maybe fail... but load_metadata should only be called
+    # when it's already know to contail 'load_vals'
+    load_conf = file_entry['conf']['load_vals']
+
+    # 'format' being defined when load_vals is should be validated when
+    # config is first saved to database. So this should be safe at this point.
+    # both of these keys should exist at this point, always.
+    # -> Also, validat 'format' against keys of FILE_READERS at add time.
+    file_format = load_conf['format']
+    file_path = file_entry['path']
+
+
+    # It should be safe to call FILE_READERS[format] here, because
+    # of validator
+    # But should catch and report file read errors
+    contents = FILE_READERS[file_format](file_path)
+
+    for entry in load_conf['values']:
+        dest_val = entry['store']
+        cur_val = contents
+        for key in entry['keys']:
+            try:
+                # Dive in recursively when nested keys.
+                # Catch missing keys and report it. This can't be validator'd away
+                cur_val = cur_val[key]
+            except KeyError:
+                raise FileReadException(
+                    f"Can't retrieve {dest_val}. Missing key {key} in file {file_path}"
+                )
+        file_entry[dest_val] = cur_val
+
+
+def parse_tree_source(source_path, conf_tree, collected=None, strict=True):
     """Use a tree version of the conf to identify correct and incorrect dir
     items.
+
+    Strict controls whether to report unmatched items. If strict is used,
+    reporting may be turned off for select items by explicitly adding
+    an 'ignore' entry for them.
     """
     collected = collected or {}
     found = {
@@ -764,12 +841,17 @@ def parse_tree_source(source_path, conf_tree, collected=None):
                 entry = match.groupdict()
                 entry['path'] = item
                 entry['conf'] = conf_tree['items'][item_regex]
+                if entry['conf'].get('load_vals', {}):
+                    load_metadata(entry)
                 break
 
         if entry:
             all_vals = {**collected, **entry}
             # Found a match to a terminal item.
-            if entry['conf'].get('tp_dir', False):
+            if entry['conf'].get('ignore', False):
+                # Don't need to report this, deliberately ignored.
+                continue
+            elif entry['conf'].get('tp_dir', False):
                 found['tp_dirs'].append(all_vals)
             else:
                 found['files'].append(all_vals)
@@ -777,7 +859,8 @@ def parse_tree_source(source_path, conf_tree, collected=None):
 
         # No terminal item matched. If the item is not a dir, this is an error.
         if not item.is_dir():
-            fails.append(f"Unknown file found - {item}")
+            if strict:
+                fails.append(f"Unknown file found - {item}")
             continue
 
         match = None
@@ -790,7 +873,8 @@ def parse_tree_source(source_path, conf_tree, collected=None):
                 break
 
         if not match:
-            fails.append(f"Unknown directory found - {item}")
+            if strict:
+                fails.append(f"Unknown directory found - {item}")
             continue
 
         # Collect files recursively from this directory
@@ -801,3 +885,54 @@ def parse_tree_source(source_path, conf_tree, collected=None):
 
     return found, fails
 
+
+def mock_load_dataset(source_path, name_conf_path, dataset_conf_path, strict=True):
+    """Walk through all the steps to load a dataset from configuration.
+
+    When strict == True, the 'ignore' configuration, if present should be loaded
+    and merged with normal items so selectively turn off error reports.
+
+    This will load the whole dataset but not currently run validators at any point.
+    (i.e. timepoint dirs get traversed too.)
+    """
+    # Validators gathered but not used yet...
+    name_conf, validators = make_and_validate(name_conf_path)
+    dataset_conf = load_dataset_conf(dataset_conf_path, name_conf, validators)
+
+    if strict:
+        ignore = dataset_conf.get('ignore', [])
+    else:
+        # Don't even before reading the 'ignore' config if strict checking is off.
+        ignore = []
+
+    inter_form = make_parseable(
+        dataset_conf.get('find', []),
+        dataset_conf.get('timepoint_dir', []),
+        ignore
+    )
+    tree = make_tree(inter_form)
+
+    found, fails = parse_tree_source(source_path, tree, strict=strict)
+
+    # tp_dir validators should run here
+    # dataset validators also (or later on? does it matter for those?)
+
+    # Everything from here down needs to be runnable individually, so the
+    # per subject/timepoint dataset reload can happen.
+
+    # How to key this? The validators ideally should ensure by this point
+    # each tp contains all the info it needs to generate a unique subid.
+    # I guess (subid, tp_num) would be unique at this point. (should be...)
+    sub_files = {}
+    sub_fails = {}
+    for tp_dir in found.get('tp_dirs', []):
+        key = (tp_dir['subject_id'], tp_dir.get('tp_num', '01'))
+        tp_files, tp_fails = parse_tree_source(
+            tp_dir['path'], tp_dir['conf'], tp_dir, strict=strict
+        )
+        sub_files[key] = tp_files
+        sub_fails[key] = tp_fails
+
+        # Run other validators here before merging data (?)
+
+    return {'files': found, 'errors': fails, 'tp_files': sub_files, 'tp_errors': sub_fails}

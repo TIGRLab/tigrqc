@@ -1,0 +1,55 @@
+# bids_patterns = {
+#     'subid': r'(?P<site>[A-Z]{3})(?P<id>[A-Z0-9]+)',
+#     'pha_subid': r'(?P<site>(?!PHA)[A-Z]{3})(?P<pha>PHA)(?P<id>[A-Z0-9]+)',
+#     'tp_num': r'(?P<tp_num>[0-9]{2})',
+#     'data_type': r'(?P<data_type>[a-z]*)',
+#     'entities': r'(?:[A-Za-z0-9]+-[A-Za-z0-9]+_)*',
+#     'suffix': r'(?P<suffix>[A-Za-z0-9]+)',
+# }
+
+# bids_templates = {
+#     'subject': 'sub-{subid}',
+#     'session': 'ses-{tp_num}',
+#     'phantom': 'sub-{pha_subid}',
+#     'fname': 'sub-{subid}_ses-{tp_num}_{entities}{suffix}',
+#     'phantom_fname': 'sub-{pha_subid}_ses-{tp_num}_{entities}{suffix}',
+# }
+
+fields:
+    # Study ID only change to normal bids
+    study_id: '[A-Z]{3}[0-9]{2}'
+    site_id: '[A-Z]{3}'
+    subject_id: '[A-Z0-9]+'
+    tp_num: '[0-9]{2}'
+    data_type: '[a-z]*'
+    entities: '(?:[A-Za-z0-9]+-[A-Za-z0-9]+_)*'
+    suffix: '[A-Za-z0-9]+'
+
+templates:
+    # Added study ID here, versus normal bids
+    subject: 'sub-{study_id}{site_id}{subject_id}'
+    session: 'ses-{tp_num}'
+    fname: '{subject}_{session}_{entities}{suffix}'
+
+validation:
+    # Merges with the dataset config when its loaded + files are parsed.
+    # This can probably do timepoint only... just to catch data that starts
+    # misnamed
+    # Also, allow user to toggle whether it's a hard fail or just a report
+    # and keep working sort of situation...
+    - use: validate_id_fields_match_expected_values
+      scope:
+        - timepoint
+        - series
+      args:
+        # Turns on study check too
+        check_study: True
+        check_site: True
+
+# Allow mapping between defined field names and expected field names / synonyms
+# so multiple regexes can supply same info. Must validate that every key in
+# both sides of mapping is a real / expected name
+
+# Don't require that naming convention supplies everything needed for
+# subject-level/scan-level because dataset may supply some... just document
+# what it supplies
