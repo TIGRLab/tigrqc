@@ -936,3 +936,79 @@ def mock_load_dataset(source_path, name_conf_path, dataset_conf_path, strict=Tru
         # Run other validators here before merging data (?)
 
     return {'files': found, 'errors': fails, 'tp_files': sub_files, 'tp_errors': sub_fails}
+
+
+################# Configuration classes start here.
+
+from typing import Literal
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+
+def normalize_plural_field(data: dict, singular: str, plural: str) -> dict:
+    """Change fields that accept singular or plural into plural form.
+    """
+    if singular in data and plural in data:
+        raise ValueError(
+            f'Field may be either {singular} or {plural}, not both.'
+        )
+    if singular in data:
+        value = data.pop(singular)
+        if isinstance(value, list):
+            # Don't error, just accept it and change key type.
+            data[plural] = value
+        else:
+            data[plural] = [value]
+    return data
+
+
+AcceptedFileTypes = Literal[tuple(FILE_READERS.keys())]
+AcceptedScopeTypes = Literal["dataset", "timepoint", "attempt", "series"]
+
+
+class StrictBaseModel(BaseModel):
+    """Ensure un-recognized fields are treated as errors.
+    """
+    # Catches user-typos
+    model_config = ConfigDict(extra="forbid")
+
+
+class FileValue(StrictBaseModel):
+    """A single entry to be read from a metadata file.
+    """
+    # Keys are case-sensitive.
+    keys: list[str] = []
+    store: str
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_keys(cls, data):
+        if isinstance(data, dict):
+            data = normalize_plural_field(data, "key", "keys")
+        return data
+
+
+class LoadValues(StrictBaseModel):
+    """Config for reading values from files during filesystem parsing.
+    """
+    file_format: AcceptedFileTypes
+    values: list[FileValue]
+
+
+class FindItem(StrictBaseModel):
+    """Config for identifying an accepted file during filesystem parsing.
+    """
+    # Needed to convert type from native str -> re.Pattern
+    # model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    # Label is entirely for the user's benefit when drawing up QC specs
+    # later on.
+    label: str
+    # Assume all files are a series / belong to a series unless told otherwise
+    scope: AcceptedScopeTypes = "series"
+    patterns: list[re.Pattern] = []
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_keys(cls, data):
+        if isinstance(data, dict):
+            data = normalize_plural_field(data, "pattern", "patterns")
+        return data
