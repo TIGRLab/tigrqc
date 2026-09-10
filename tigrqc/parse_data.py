@@ -79,29 +79,31 @@ def make_and_validate(config_path):
     return name_conf, validators
 
 
-def create_field(fname, re_str):
-    """Wrap a regex in a group and make sure it can be compiled.
-    """
-    group = f'(?P<{fname}>{re_str})'
-    try:
-        re.compile(group)
-    except re.error as e:
-        raise Exception(f'Failed to make regex for group {fname} - {str(e)}')
-    return group
+# def create_field(fname, re_str):
+#     """Wrap a regex in a group and make sure it can be compiled.
+#     """
+#     group = f'(?P<{fname}>{re_str})'
+#     try:
+#         re.compile(group)
+#     except re.error as e:
+#         # pydantic expects ValueError
+#         raise ValueError(f'Failed to make regex for group {fname} - {str(e)}')
+#     return group
 
 
-def create_template(tname, re_str, name_conf):
-    """Fill in templates with fields, wrap it in a group, then test it compiles.
-    """
-    try:
-        template = re_str.format_map(name_conf)
-    except KeyError as e:
-        raise Exception(
-            f'Template {tname} references non-existent field - {str(e)}'
-        )
+# def create_template(tname, re_str, name_conf):
+#     """Fill in templates with fields, wrap it in a group, then test it compiles.
+#     """
+#     try:
+#         template = re_str.format_map(name_conf)
+#     except KeyError as e:
+#         # pydantic expects ValueError
+#         raise ValueError(
+#             f'Template {tname} references non-existent field - {str(e)}'
+#         )
 
-    group = create_field(tname, template)
-    return group
+#     group = create_field(tname, template)
+#     return group
 
 
 # def finalize_name_conf(name_conf):
@@ -939,9 +941,11 @@ def mock_load_dataset(source_path, name_conf_path, dataset_conf_path, strict=Tru
 
 
 ################# Configuration classes start here.
-
+from string import Formatter
 from typing import Literal
-from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from pydantic import (BaseModel, ConfigDict, Field, ValidationInfo,
+                      ValidationError, field_validator, model_validator)
+from pydantic_core import InitErrorDetails, PydanticCustomError
 
 def normalize_plural_field(data: dict, singular: str, plural: str) -> dict:
     """Change fields that accept singular or plural into plural form.
@@ -1012,3 +1016,231 @@ class FindItem(StrictBaseModel):
         if isinstance(data, dict):
             data = normalize_plural_field(data, "pattern", "patterns")
         return data
+
+
+######### Name scheme validators
+
+def is_valid_group_name(group_name):
+    """Check if a regex group name is valid.
+
+    Valid regex group names must be only alphanumeric or underscore characters
+    and must not start with a number.
+    """
+    valid_format = r"[A-Za-z_][A-Za-z0-9_]*"
+    return bool(re.fullmatch(valid_format, group_name))
+
+
+def create_field(fname, re_str):
+    """Wrap a regex in a group and report compile errors that may exist.
+    """
+    group = f'(?P<{fname}>{re_str})'
+    error = None
+    try:
+        re.compile(group)
+    except re.error as e:
+        if 'redefinition' in e.msg:
+            error = (
+                f'"{fname}" invalid regex: Duplicate fields exist - {str(e)}'
+            )
+        elif 'nothing to repeat' in e.msg:
+            error = (
+                f'"{fname}" invalid regex: When using quantifiers like *, +, '
+                f'?, you must specify the pattern to repeat - {str(e)}'
+            )
+        else:
+            error = (
+                f'"{fname}" invalid regex: cannot compile - {str(e)}'
+            )
+
+    return group, error
+
+
+def create_template(tname, re_str, fields):
+    """Fill in template and report compile errors that may exist.
+    """
+    try:
+        template = re_str.format_map(fields)
+    except KeyError as e:
+        # Return error message instead of raising so errors can be
+        # accumulated.
+        return None, f'Template {tname} references non-existent field - {str(e)}'
+
+    return create_field(tname, template)
+
+
+class NameScheme(StrictBaseModel):
+    """Validate a user naming scheme.
+    """
+    # Validates:
+    #   - keys/values that become group names are valid as re group names
+    #   - fields and templates all compile correctly
+    #   - Templates don't reference a non-existent template or field
+    # To do:
+    #   - Check 'validation' entries all correct format and reference
+    #       valid function for it.
+    #   - Certain required keys are given (fix later or defer to data conf)
+
+    field_map: dict[str, str] = Field(default_factory=dict)
+    fields: dict[str, str]
+    templates: dict[str, str]
+    validation: list
+
+    @field_validator('field_map')
+    @classmethod
+    def check_field_names(cls, data):
+        """Make sure every 'field_map' key and value can be a valid group name.
+        """
+        if not isinstance(data, dict):
+            return data
+
+        bad_names = set()
+        for key, value in data.items():
+            if not is_valid_group_name(key):
+                bad_names.add(key)
+
+            if not is_valid_group_name(value):
+                bad_names.add(value)
+
+        if bad_names:
+            raise ValueError(
+                f'Invalid items found: {", ".join(bad_names)}'
+            )
+
+        return data
+
+    @field_validator('fields')
+    @classmethod
+    def check_fields(cls, data):
+        """Ensure field names can be a valid group name.
+        """
+        if not isinstance(data, dict):
+            return data
+
+        bad_names = set()
+        for key in data:
+            if not is_valid_group_name(key):
+                bad_names.add(key)
+
+        if bad_names:
+            raise ValueError(
+                f'Invalid field names found: {", ".join(bad_names)}'
+            )
+
+        return data
+
+    @field_validator('templates')
+    @classmethod
+    def check_templates(cls, data, info):
+        """Ensure templates can be valid group names and all references exist.
+        """
+        if not isinstance(data, dict):
+            return data
+
+        avail_fields = list(info.data.get('fields').keys())
+        bad_names = set()
+        errors = []
+        for key, template in data.items():
+            if not is_valid_group_name(key):
+                # Even if it's a bad group name, keep processing it as if
+                # valid to avoid triggering weird errors about 'missing keys'
+                bad_names.add(key)
+
+            missing_fields = []
+            for _, field_name, _, _ in Formatter().parse(template):
+                if field_name not in avail_fields:
+                    missing_fields.append(field_name)
+
+            if missing_fields:
+                err_msg = (
+                    f'Template "{key}" contains unknown field(s): '
+                    f'{", ".join(missing_fields)}. If the template depends on '
+                    'other templates, it must be defined after them.'
+                )
+                errors.append(
+                    InitErrorDetails(
+                        type=PydanticCustomError(
+                            'unknown_field',
+                            err_msg,
+                        ),
+                        loc=(),
+                        input=data
+                    )
+                )
+
+            # Append the template even if malformed, to avoid a weird cascade.
+            avail_fields.append(key)
+
+        if bad_names:
+            errors.append(
+                InitErrorDetails(
+                    type=PydanticCustomError(
+                        'invalid_template_name',
+                        f'Invalid template name(s): {", ".join(bad_names)}'
+                    ),
+                    loc=(),
+                    input=data
+                )
+            )
+
+        if errors:
+            raise ValidationError.from_exception_data(
+                title="NameScheme.templates",
+                line_errors=errors,
+            )
+
+        return data
+
+    @model_validator(mode='after')
+    def construct_scheme(self):
+        """Turn fields and templates into a usable naming scheme.
+        """
+        scheme = {}
+        errors = []
+        for fname, re_str in self.fields.items():
+            group_name = self.field_map.get(fname, fname)
+            field, error = create_field(group_name, re_str)
+
+            if error:
+                errors.append(
+                    InitErrorDetails(
+                        type=PydanticCustomError(
+                            'invalid_regex',
+                            error,
+                        ),
+                        loc=(),
+                        input={fname: re_str},
+                    )
+                )
+            else:
+                scheme[fname] = field
+
+        for tname, re_str in self.templates.items():
+            group_name = self.field_map.get(tname, tname)
+            template, error = create_template(group_name, re_str, scheme)
+
+            if error:
+                errors.append(
+                    InitErrorDetails(
+                        type=PydanticCustomError(
+                            'invalid_template',
+                            error,
+                        ),
+                        loc=(),
+                        input={tname: re_str},
+                    )
+                )
+            else:
+                scheme[tname] = template
+
+        if errors:
+            raise ValidationError.from_exception_data(
+                title='NameScheme',
+                line_errors=errors,
+            )
+
+        self._scheme = scheme
+        return self
+
+    @property
+    def scheme(self):
+        return self._scheme
