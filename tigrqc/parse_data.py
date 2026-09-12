@@ -287,7 +287,7 @@ def collect_dirs(start_dir, path_regexes, level=0, parsed=None, children=None):
     return matches, fails
 
 
-def validate_bids_dir_structure(matches, pass_sessions=True):
+def validate_bids_dir_structure(matches: list[dict], *, pass_sessions: bool = True):
     """Validate that the sub-directories in each subject dir matches the
     bid convention. Report ones that don't and ensure correct directory
     is used when optional session sub-dir is omitted.
@@ -941,8 +941,9 @@ def mock_load_dataset(source_path, name_conf_path, dataset_conf_path, strict=Tru
 
 
 ################# Configuration classes start here.
+import inspect
 from string import Formatter
-from typing import Literal
+from typing import Any, Literal, get_type_hints
 from pydantic import (BaseModel, ConfigDict, Field, ValidationInfo,
                       ValidationError, field_validator, model_validator)
 from pydantic_core import InitErrorDetails, PydanticCustomError
@@ -966,6 +967,7 @@ def normalize_plural_field(data: dict, singular: str, plural: str) -> dict:
 
 AcceptedFileTypes = Literal[tuple(FILE_READERS.keys())]
 AcceptedScopeTypes = Literal["dataset", "timepoint", "attempt", "series"]
+AcceptedPostProcessors = Literal[tuple(VALIDATORS.keys())]
 
 
 class StrictBaseModel(BaseModel):

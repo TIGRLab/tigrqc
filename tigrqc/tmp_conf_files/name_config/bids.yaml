@@ -28,7 +28,7 @@ templates:
     session: 'ses-{tp_num}'
     fname: '{subject}_{session}_{entities}{suffix}'
 
-validation:
+post_processors:
     # Merges with the dataset config when its loaded + files are parsed.
     # This can probably do timepoint only... just to catch data that starts
     # misnamed

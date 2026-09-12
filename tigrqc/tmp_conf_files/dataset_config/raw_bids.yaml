@@ -42,7 +42,7 @@ find:
 # group_by:
 #     - file_name
 
-validation:
+post_processors:
 
     # Be clearer that this just checking the optional ses/data_type layout
     # and finding the correct parent dir.
