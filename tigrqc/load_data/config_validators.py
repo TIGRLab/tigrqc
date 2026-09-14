@@ -3,15 +3,14 @@
 import inspect
 from typing import Any, Callable, Literal
 
-from pydantic import (Field, create_model, ConfigDict, BaseModel,
+from pydantic import (BaseModel, ConfigDict, Field, create_model,
                       model_validator)
 
 from .parsers import FILE_READERS
 from .post_processors import POST_PROCESSORS
 
-
 FileTypes = Literal[tuple(FILE_READERS.keys())]
-ScopeTypes = Literal["dataset", "timepoint", "attempt", "series"]
+ScopeTypes = Literal['dataset', 'timepoint', 'attempt', 'series']
 PostProcessorTypes = Literal[tuple(POST_PROCESSORS.keys())]
 
 
@@ -19,7 +18,7 @@ class StrictBaseModel(BaseModel):
     """Ensure un-recognized fields are treated as errors.
     """
     # Catches user-typos
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra='forbid')
 
 
 class PostProcessorConfig(StrictBaseModel):
@@ -29,16 +28,11 @@ class PostProcessorConfig(StrictBaseModel):
     scope: ScopeTypes = 'series'
     args: dict[str, Any] = Field(default_factory=dict)
 
-    @model_validator(mode='after')
-    def get_function(self):
-        """Retrieve the function from the user's string.
-        """
-        self._func = POST_PROCESSORS[self.use]
-        return self
-
     @property
     def function(self):
-        return self._func
+        """Expose the actual post-processor function.
+        """
+        return POST_PROCESSORS[self.use]
 
     @model_validator(mode='after')
     def check_kwargs(self):
@@ -78,9 +72,9 @@ def build_kwargs_validator(func: Callable) -> type[BaseModel]:
 
         kwargs[name] = (annotation, default)
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra='forbid')
     validator = create_model(
-        f"KwargsModel_{func.__name__}",
+        f'KwargsModel_{func.__name__}',
         __config__=model_config,
         **kwargs
     )
@@ -90,5 +84,6 @@ def build_kwargs_validator(func: Callable) -> type[BaseModel]:
 
 # Used to check that user-provided args are valid for the function they want.
 USER_ARG_VALIDATORS = {
-    name: build_kwargs_validator(func) for name, func in POST_PROCESSORS.items()
+    name: build_kwargs_validator(func)
+    for name, func in POST_PROCESSORS.items()
 }
