@@ -63,7 +63,7 @@ class StrictBaseModel(BaseModel):
 class PostProcessorConfig(StrictBaseModel):
     """Configuration for a post processor that will be run on input data.
     """
-    use: PostProcessorTypes
+    use: PostProcessorTypes  # type: ignore[valid-type]
     scope: ScopeTypes = 'series'
     args: dict[str, Any] = Field(default_factory=dict)
 
