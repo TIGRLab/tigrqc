@@ -3,11 +3,11 @@
 import inspect
 import re
 from string import Formatter
-from typing import Any, Callable, Literal, Self
+from typing import Any, Annotated, Callable, Literal, Self
 
-from pydantic import (BaseModel, ConfigDict, Field, PrivateAttr,
-                      ValidationError, ValidationInfo, create_model,
-                      field_validator, model_validator)
+from pydantic import (BaseModel, BeforeValidator, ConfigDict, Field,
+                      PrivateAttr, ValidationError, ValidationInfo,
+                      create_model, field_validator, model_validator)
 from pydantic_core import InitErrorDetails, PydanticCustomError
 
 from .parsers import FILE_READERS
@@ -304,10 +304,7 @@ class NameScheme(StrictBaseModel):
         avail_fields = list(info.data.get('fields', {}).keys())
         for key, template in data.items():
 
-            unknown_fields = []
-            for _, field_name, _, _ in Formatter().parse(template):
-                if field_name is not None and field_name not in avail_fields:
-                    unknown_fields.append(field_name)
+            unknown_fields = check_references(template, avail_fields)
 
             if unknown_fields:
                 err_msg = (
@@ -396,3 +393,155 @@ class NameScheme(StrictBaseModel):
             A fully assembled and validated name scheme.
         """
         return self._scheme
+
+
+def normalize_plural_field(
+        data: dict[Any, Any], singular: str, plural: str
+) -> dict[Any, Any]:
+    """Change fields that can accept singular or plural names into plural form.
+    """
+    if singular in data and plural in data:
+        raise ValueError(
+            f'Field may be either {singular} or {plural}, not both.'
+        )
+
+    if singular in data:
+        value = data.pop(singular)
+        if isinstance(value, list):
+            # Don't error, just accept it and change key type.
+            data[plural] = value
+        else:
+            data[plural] = [value]
+
+    return data
+
+
+class FileValue(StrictBaseModel):
+    """A single entry to be read from a metadata file and stored in a variable.
+    """
+    keys: list[str]
+    store: str
+
+    @model_validator(mode='before')
+    @classmethod
+    def normalize_keys(cls, data):
+        if isinstance(data, dict):
+            data = normalize_plural_field(data, 'key', 'keys')
+        return data
+
+
+class LoadedValues(StrictBaseModel):
+    """Values that must be read from files during filesystem parsing.
+    """
+    file_format: FileTypes
+    values: list[FileValue]
+
+
+def _populate_template(value: Any, info: ValidationInfo) -> Any:
+    """Take a template string and populate it via a name scheme.
+    """
+    if not isinstance(value, str):
+        # Let pydantic's normal validation process generate an error.
+        return value
+
+    if not info.context or 'name_scheme' not in info.context:
+        raise ValueError('name_scheme must be provided in validation context.')
+
+    scheme = info.context['name_scheme']
+
+    try:
+        unknown_fields = check_references(value, scheme)
+    except ValueError as e:
+        raise ValueError(f'Invalid template "{value}": {e}') from e
+
+    if unknown_fields:
+        raise ValueError(
+            f'Template "{value}" contains unknown reference(s): '
+            f'{", ".join(unknown_fields)}.'
+        )
+
+    return value.format_map(scheme)
+
+
+TemplatedRegex = Annotated[re.Pattern[str],
+                           BeforeValidator(_populate_template)]
+
+
+class FileSystemItem(StrictBaseModel):
+    """Identifies an item to save/read from the filesystem.
+    """
+    label: str
+    scope: ScopeTypes = 'series'
+    stray_file: bool = False
+    append_path: list[TemplatedRegex] = Field(default_factory=list)
+    patterns: list[TemplatedRegex] = Field(default_factory=list)
+    load_vals: list[LoadedValues] = Field(default_factory=list)
+
+
+    @model_validator(mode='before')
+    @classmethod
+    def normalize_plural_form(cls, data):
+        """Normalize fields that can be singular or plural to the plural form.
+        """
+        if isinstance(data, dict):
+            attrs = [
+                ('pattern', 'patterns'),
+                ('load_val', 'load_vals'),
+            ]
+            for singular, plural in attrs:
+                data = normalize_plural_field(data, singular, plural)
+        return data
+
+
+class IgnoreFileSystemItem(FileSystemItem):
+    """Represents a filesystem item that should be ignored when encountered.
+
+    This is for when the user is using 'strict' filesystem validation and
+    doesn't want to receive error messages for certain files they expect
+    to exist and don't want stored in the database.
+    """
+    # Scope should always be 'ignore' and not configurable.
+    scope: Literal['ignore'] = 'ignore'
+
+
+def check_references(template: str, name_scheme: dict[str, str]) -> list[str]:
+    """Check that every reference in template exists in name scheme.
+
+    This will find and report _all_ non-existent items that a template tries
+    to reference (versus failing on the first, like a simple .format_map check
+    does). If the user mistakenly includes string format specs (``:10``) or
+    conversion info (``!r``) it will be reported as an invalid reference.
+
+    Args:
+        template: The un-populated string template to check.
+        name_scheme: A dictionary of template names mapped to valid regex
+            strings (not yet compiled.)
+
+    Returns:
+        A list of all references the template makes that do not exist in the
+        name scheme. If the entire template can be properly populated,
+        an empty list will be returned.
+
+    Raises:
+        ValueError: If template is an invalidly formatted string (e.g.
+            missing open or close brace).
+    """
+    invalid_references = []
+    for _, field_name, format_spec, conversion in Formatter().parse(template):
+
+        if field_name is None:
+            # A literal-only chunk of text, skip it.
+            continue
+
+        # Treat these as part of a literal name.
+        # String format/conversion not allowed in templates.
+        if format_spec:
+            field_name += f':{format_spec}'
+
+        if conversion:
+            field_name += f'!{conversion}'
+
+        if field_name not in name_scheme:
+            invalid_references.append(field_name)
+
+    return invalid_references

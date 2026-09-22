@@ -746,3 +746,275 @@ class TestNameScheme:
 
         errors = exc_info.value.errors()
         assert len(errors) == 2
+
+
+class TestCheckReferences:
+    """Tests for check_references
+    """
+
+    @pytest.fixture
+    def name_scheme(self):
+        """A mock name scheme for testing errors in template references.
+        """
+        scheme = {
+            'subject': '(?!PHA)[^_]+',
+            'timepoint': '[0-9]{2}',
+            'site': '[^_]+',
+        }
+        return scheme
+
+    @pytest.mark.parametrize('template', [
+        '',
+        'plain text, nothing to populate',
+        '{subject}',
+        '{subject}-{site}',
+        'prefix_{subject}_suffix',
+    ])
+    def test_returns_empty_list_when_all_references_exist(
+        self, template, name_scheme
+    ):
+        """Result should be empty list when all refs are in name_scheme.
+        """
+        assert config.check_references(template, name_scheme) == []
+
+    def test_empty_list_when_name_scheme_empty_and_literal_template(self):
+        """A template without references should produce empty list.
+        """
+        assert config.check_references('just text', {}) == []
+
+    def test_reports_single_unknown_reference(self, name_scheme):
+        """A single unknown reference should be caught.
+        """
+        assert config.check_references('{missing}', name_scheme) == ['missing']
+
+    def test_reports_all_unknown_refs_not_just_first(self, name_scheme):
+        """All unknown references should be reported, not just first.
+        """
+        result = config.check_references('{a}-{subject}-{b}-{c}', name_scheme)
+        assert result == ['a', 'b', 'c']
+
+    def test_all_refs_reported_when_name_scheme_empty(self):
+        """If name scheme is empty, any reference at all is invalid.
+        """
+        assert config.check_references('{name}{year}', {}) == ['name', 'year']
+
+    def test_references_are_case_sensitive(self, name_scheme):
+        """Name scheme references are always case-sensitive.
+        """
+        assert config.check_references('{Subject}', name_scheme) == ['Subject']
+
+    def test_empty_reference_is_reported_as_empty_string(self, name_scheme):
+        """An empty reference is considered the empty string and reported.
+        """
+        assert config.check_references('{}', name_scheme) == ['']
+
+    def test_format_spec_causes_known_field_to_be_invalid(self, name_scheme):
+        """String format specs are not accepted. Render whole ref invalid.
+        """
+        result = config.check_references('{subject:>10}', name_scheme)
+        assert result == ['subject:>10']
+
+    def test_string_conversion_causes_known_field_to_be_invalid(
+            self, name_scheme
+    ):
+        """String conversion not accepted. Renders whole ref invalid.
+        """
+        result = config.check_references('{subject!r}', name_scheme)
+        assert result == ['subject!r']
+
+    def test_both_string_conversion_and_format_spec_get_reported(
+            self, name_scheme
+    ):
+        """If both given, the reported invalid ref contains both.
+        """
+        result = config.check_references('{subject!r:>10}', name_scheme)
+        assert result == ['subject:>10!r']
+
+    def test_nested_references_raise_value_error(self, name_scheme):
+        """Nesting references is not allowed.
+        """
+        with pytest.raises(ValueError):
+            config.check_references('{subject{site}}', name_scheme)
+
+    def test_only_reports_invalid_refs_when_valid_exist_too(self, name_scheme):
+        result = config.check_references(
+            '{subject} {timepoint:04d} {site!s}', name_scheme
+        )
+        assert result == ['timepoint:04d', 'site!s']
+
+    @pytest.mark.parametrize('template', [
+        '{{}}',
+        '{{name}}',
+        'a {{literal}} b',
+    ])
+    def test_escaped_braces_arent_references(self, template, name_scheme):
+        """Escaped braces are treated as a literal string.
+        """
+        assert config.check_references(template, {}) == []
+
+    @pytest.mark.parametrize('template', [
+        '{',
+        '}',
+        '{subject',
+        'subject}',
+        '{subject}{',
+        'text {unclosed',
+        '{subject:{site}',
+    ])
+    def test_invalid_template_raises_value_error(self, template, name_scheme):
+        """Templates with unclosed braces should raise a ValueError.
+        """
+        with pytest.raises(ValueError):
+            config.check_references(template, name_scheme)
+
+    def test_does_not_modify_name_scheme(self, name_scheme):
+        orig_scheme = dict(name_scheme)
+        config.check_references('{subject}{missing}', name_scheme)
+        assert orig_scheme == name_scheme
+
+
+class TestNormalizePluralField:
+    """Test normalize_plural_field
+    """
+    def test_fields_not_mentioned_arent_modified(self):
+        """Unrelated keys in data shouldn't be changed.
+        """
+        data = {'other': 1}
+        result = config.normalize_plural_field(data, 'key', 'keys')
+
+        assert result == {'other': 1}
+
+    def test_fields_already_plural_arent_modified(self):
+        """If a field is already plural it shouldn't be changed.
+        """
+        data = {'keys': ['a', 'b']}
+        result = config.normalize_plural_field(data, 'key', 'keys')
+
+        assert result == {'keys': ['a', 'b']}
+
+    def test_singular_field_replaced_with_plural_name(self):
+        """When the singular is present it should be updated to plural.
+        """
+        data = {'key': 'a'}
+        result = config.normalize_plural_field(data, 'key', 'keys')
+
+        assert 'key' not in result
+        assert result == {'keys': ['a']}
+
+    def test_normalized_field_also_wraps_value_in_list(self):
+        """A singular field changed to plural should also have list value.
+        """
+        data = {'key': 'a'}
+        result = config.normalize_plural_field(data, 'key', 'keys')
+
+        assert 'key' not in result
+        assert result == {'keys': ['a']}
+
+    def test_normalized_field_value_unmodified_if_already_list(self):
+        """Singular field name with plural value only updates field name.
+        """
+        data = {'key': ['a', 'b']}
+        result = config.normalize_plural_field(data, 'key', 'keys')
+
+        assert result == {'keys': ['a', 'b']}
+
+    def test_raises_when_both_singular_and_plural_form_present(self):
+        """Only singular OR plural is valid. Both is an error.
+        """
+        data = {'key': 'a', 'keys': ['b']}
+
+        with pytest.raises(ValueError, match='not both'):
+            config.normalize_plural_field(data, 'key', 'keys')
+
+    def test_modifies_in_place_and_returns_orig_input(self):
+        """Changes are done in place. Returned value is just original data.
+        """
+        data = {'key': 'a'}
+        result = config.normalize_plural_field(data, 'key', 'keys')
+
+        assert result is data
+
+
+class TestFileValue:
+    """Tests for FileValue
+    """
+
+    def test_accepts_valid_configuration(self):
+        """Valid inputs should result in config object creation.
+        """
+        keys = ['bids_meta', 'SeriesDescription']
+        store = 'description'
+
+        fv = config.FileValue(keys=keys, store=store)
+
+        assert fv.keys == keys
+        assert fv.store == store
+
+    def test_singular_key_accepted_and_made_plural_form(self):
+        """When file keys are given in singular form should become plural.
+        """
+        fv = config.FileValue(key='SeriesDescription', store='description')
+
+        assert fv.keys == ['SeriesDescription']
+
+    def test_singular_key_with_list_value_accepted_and_normalized(self):
+        """Using singular 'key' with list of values is fine and becomes 'keys'.
+        """
+        key = ['bids_meta', 'SeriesDescription']
+        store = 'description'
+
+        fv = config.FileValue(key=key, store=store)
+
+        assert fv.keys == key
+
+    def test_providing_both_key_and_keys_raises_exception(self):
+        """Only one of 'key' and 'keys' can be used, not both.
+        """
+        with pytest.raises(ValidationError):
+            config.FileValue(key='a', keys=['b'], store='x')
+
+    def test_missing_required_fields_raises(self):
+        """Any missing required field should raise an exception.
+        """
+        with pytest.raises(ValidationError):
+            # Missing key/keys
+            config.FileValue(store='x')
+
+        with pytest.raises(ValidationError):
+            # Missing store
+            config.FileValue(key='a')
+
+
+class TestLoadedValues:
+    """Tests for LoadedValues
+    """
+    def test_accepts_valid_configuration(self):
+        """Config object should be made when valid config given.
+        """
+        lv = config.LoadedValues(
+            file_format='yaml',
+            values=[config.FileValue(key='a', store='x')],
+        )
+
+        assert lv.file_format == 'yaml'
+        assert len(lv.values) == 1
+        assert lv.values[0].keys == ['a']
+
+    def test_values_can_accept_plain_dict_objects(self):
+        """Pydantic should coerce a dict to a FileValue automatically.
+        """
+        lv = config.LoadedValues(
+            file_format='json',
+            values=[{'key': 'a', 'store': 'x'}],
+        )
+
+        assert isinstance(lv.values[0], config.FileValue)
+
+    def test_empty_values_list_allowed(self):
+        lv = config.LoadedValues(file_format='yaml', values=[])
+
+        assert lv.values == []
+
+    def test_invalid_file_format_raises(self):
+        with pytest.raises(ValidationError):
+            config.LoadedValues(file_format='not-a-real-format-xyz', values=[])
