@@ -2,18 +2,15 @@
 """
 # pylint: disable=redefined-outer-name
 import importlib
+import re
 import typing
 
 import pytest
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ValidationError, field_validator
 from pydantic_core import PydanticCustomError
 
 import tigrqc.load_data.config_validators as config
 import tigrqc.load_data.post_processors  # Import needed for monkeypatch
-
-# -----------------------------------------
-# Mock post processor functions for testing
-# -----------------------------------------
 
 
 def mock_one_simple_kwarg(*, num: int):  # pylint: disable=unused-argument
@@ -984,6 +981,12 @@ class TestFileValue:
             # Missing store
             config.FileValue(key='a')
 
+    def test_empty_key_list_raises_exception(self):
+        """Providing an empty list of keys is an error.
+        """
+        with pytest.raises(ValidationError):
+            config.FileValue(keys=[], store='x')
+
 
 class TestLoadedValues:
     """Tests for LoadedValues
@@ -1011,10 +1014,617 @@ class TestLoadedValues:
         assert isinstance(lv.values[0], config.FileValue)
 
     def test_empty_values_list_allowed(self):
+        """An empty values list is allowed if whole file must be read/stored.
+        """
         lv = config.LoadedValues(file_format='yaml', values=[])
 
         assert lv.values == []
 
     def test_invalid_file_format_raises(self):
+        """Unrecognized file formats should raise a validation error.
+        """
         with pytest.raises(ValidationError):
             config.LoadedValues(file_format='not-a-real-format-xyz', values=[])
+
+
+class TestNameSchemeDependent:
+    """Tests for NameSchemeDependent class
+    """
+
+    @pytest.fixture
+    def name_scheme(self):
+        """A basic, valid, name scheme for testing against.
+        """
+        raw_scheme = {
+            'fields': {
+                'site_id': '[A-Z]{3}',
+                'subject_id': '[A-Z0-9]+',
+            },
+            'templates': {
+                'subject': 'sub-{site_id}{subject_id}'
+            },
+        }
+
+        return config.NameScheme(**raw_scheme)
+
+    def test_load_correctly_provides_expected_context(self, name_scheme):
+        """When load is used, context should contain expected values.
+        """
+
+        class TestModel(config.NameSchemeDependent):
+            """Save context to check it.
+            """
+            name: str
+
+            @field_validator('name')
+            @classmethod
+            def store_context(cls, value, info):
+                assert info.context is not None
+                assert info.context['name_scheme'] == name_scheme
+                return value
+
+
+        result = TestModel.load({'name': 'testing'}, name_scheme)
+
+    def test_direct_init_raises_validation_exception(self):
+        """Shouldn't allow traditional init without a NameScheme instance.
+        """
+        with pytest.raises(
+            ValidationError,
+            match='requires a valid NameScheme'
+        ):
+            my_config = {'name': 'something', 'other': 1}
+            config.NameSchemeDependent(**my_config)
+
+    def test_model_validate_raises_when_missing_name_scheme(self):
+        """Shouldn't allow validation without name scheme.
+        """
+        with pytest.raises(
+            ValidationError,
+            match='requires a valid NameScheme'
+        ):
+            my_config = {'name': 'something', 'other': 1}
+            config.NameSchemeDependent.model_validate(my_config)
+
+    def test_expected_subclass_type_is_returned_by_load(self, name_scheme):
+        """Load should return an instance of the subclass.
+        """
+
+        class TestModelA(config.NameSchemeDependent):
+            """Should be returned by load.
+            """
+            name: str
+
+        result = TestModelA.load({'name': 'testing'}, name_scheme)
+
+        assert isinstance(result, TestModelA)
+
+    def test_raises_validation_error_if_name_scheme_is_none(self):
+        """Providing name_scheme=None should also not be accepted.
+        """
+        with pytest.raises(
+            ValidationError,
+            match='requires a valid NameScheme'
+        ):
+            my_config = {'name': 'something', 'other': 1}
+            config.NameSchemeDependent.load(my_config, None)
+
+
+class TestNormalizeUserPath:
+    """Tests for normalize_user_path
+    """
+
+    def test_nonempty_string_gets_wrapped_in_list_of_list(self):
+        """A non-empty string should be changed to [[str]]
+        """
+        assert config.normalize_user_path("foo") == [["foo"]]
+
+    def test_empty_string_returns_empty_list(self):
+        """An empty string should be treated as 'unset'.
+        """
+        assert config.normalize_user_path("") == []
+
+    def test_empty_list_returns_empty_list(self):
+        """Empty list should be unchanged.
+        """
+        assert config.normalize_user_path([]) == []
+
+    def test_list_of_one_string_gets_wrapped_in_outer_list(self):
+        """If list provides [str] it should normalize to [[str]]
+        """
+        assert config.normalize_user_path(["foo"]) == [["foo"]]
+
+    def test_list_of_multiple_strings_get_wrapped_in_lists(self):
+        """A list of strings should get each string wrapped in a list.
+        """
+        assert config.normalize_user_path(["foo", "bar"]) == [["foo"], ["bar"]]
+
+    def test_empty_string_entries_are_discarded(self):
+        """Empty strings should be treated as user error and ignored.
+        """
+        user_input = ["foo", "", "bar"]
+        expected = [["foo"], ["bar"]]
+        assert config.normalize_user_path(user_input) == expected
+
+    def test_all_empty_string_entries_collapse_to_empty_list(self):
+        """List of empty strings collapses to 'unset' state (an empty list).
+        """
+        assert config.normalize_user_path(["", "", ""]) == []
+
+    def test_single_nested_list_unchanged(self):
+        """No changes needed if list containing one list of strings given.
+        """
+        assert config.normalize_user_path([["foo", "bar"]]) == [["foo", "bar"]]
+
+    def test_nested_list_has_empty_strings_filtered_out(self):
+        """Empty strings in a nested list should also be filtered out.
+        """
+        user_input = [["foo", "", "bar"]]
+        expected = [["foo", "bar"]]
+        assert config.normalize_user_path(user_input) == expected
+
+    def test_nested_empty_list_with_empty_string_becomes_empty_list(self):
+        """A nested empty list with an empty string is same as 'unset'.
+        """
+        assert config.normalize_user_path([[""]]) == []
+
+    def test_nested_list_of_multiple_empty_strings_becomes_empty_list(self):
+        """A nested list with multiple empty strings is treated as 'unset'.
+        """
+        assert config.normalize_user_path([["", "", ""]]) == []
+
+    def test_empty_nested_list_becomes_plain_empty_list(self):
+        """A nested empty list is treated as 'unset'.
+        """
+        assert config.normalize_user_path([[]]) == []
+
+    def test_handles_mixed_strings_and_lists(self):
+        """It's ok for user to specify mix of plain strings and lists of str.
+        """
+        assert config.normalize_user_path(["foo", ["bar", "baz"]]) == [
+            ["foo"],
+            ["bar", "baz"],
+        ]
+
+    def test_handles_mixed_str_list_and_empty_items(self):
+        """Mix of valid and empty items should keep valid and discard empty.
+        """
+        assert config.normalize_user_path(["foo", "", ["bar", ""], [""]]) == [
+            ["foo"],
+            ["bar"],
+        ]
+
+    def test_non_string_non_list_raises_exception(self):
+        """Only strings and lists accepted.
+        """
+        with pytest.raises(ValueError):
+            config.normalize_user_path(123)
+
+    def test_none_raises_exception(self):
+        """None should be treated as an error.
+        """
+        with pytest.raises(ValueError):
+            config.normalize_user_path(None)
+
+    def test_nested_list_with_non_string_items_raises_exception(self):
+        """Nested non-str items are an error.
+        """
+        with pytest.raises(ValueError):
+            config.normalize_user_path([[1, 2]])
+
+    def test_nested_list_with_mixed_string_and_non_string_raises(self):
+        """Catches invalid input mixed with valid.
+        """
+        with pytest.raises(ValueError):
+            config.normalize_user_path([["foo", 1]])
+
+    def test_top_level_entry_of_wrong_type_raises(self):
+        """Catches invalid input nested in a list.
+        """
+        with pytest.raises(ValueError):
+            config.normalize_user_path([123])
+
+    def test_top_level_entry_of_dict_raises(self):
+        """Dict within list not accepted.
+        """
+        with pytest.raises(ValueError):
+            config.normalize_user_path([{"foo": "bar"}])
+
+
+@pytest.fixture
+def name_scheme():
+    """A very basic, valid, name scheme for testing.
+    """
+    raw_scheme = {
+        'fields': {
+            'site_id': '[A-Z]{3}',
+            'subject_id': '[A-Z0-9]+',
+        },
+        'templates': {
+            'subject': 'sub-{site_id}{subject_id}',
+        },
+    }
+    return config.NameScheme(**raw_scheme)
+
+
+class TestPopulateTemplate:
+    """Tests for _populate_template and the TemplatedRegex annotated type.
+    """
+
+    class FakeTemplateModel(config.NameSchemeDependent):
+        """Minimal model with a single TemplatedRegex field.
+        """
+        pattern: config.TemplatedRegex
+
+    def test_populates_and_compiles_valid_template(self, name_scheme):
+        """Field should output an re Pattern, filled by NameScheme.
+        """
+        result = self.FakeTemplateModel.load(
+            {'pattern': '{site_id}-{subject_id}'},
+            name_scheme,
+        )
+
+        assert isinstance(result.pattern, re.Pattern)
+        assert result.pattern.pattern == (
+            r'(?P<site_id>[A-Z]{3})-(?P<subject_id>[A-Z0-9]+)'
+        )
+
+    def test_template_referencing_a_template_field(self, name_scheme):
+        """A pattern that's made of only a template should match orig template.
+        """
+        result = self.FakeTemplateModel.load(
+            {'pattern': '{subject}'},
+            name_scheme,
+        )
+
+        assert result.pattern.pattern == name_scheme.scheme['subject']
+
+    def test_literal_string_with_no_references_compiles(self, name_scheme):
+        """Literal pattern is unmodified.
+        """
+        result = self.FakeTemplateModel.load(
+            {'pattern': 'just-literal'},
+            name_scheme,
+        )
+
+        assert result.pattern.pattern == 'just-literal'
+
+    def test_unknown_reference_raises_value_error(self, name_scheme):
+        """A pattern using a non-existent pattern raises an error.
+        """
+        with pytest.raises(ValidationError, match='unknown reference'):
+            self.FakeTemplateModel.load(
+                {'pattern': '{does_not_exist}'},
+                name_scheme,
+            )
+
+    def test_malformed_template_raises_value_error(self, name_scheme):
+        """A template with an unclosed brace should raise an exception.
+        """
+        with pytest.raises(ValidationError):
+            self.FakeTemplateModel.load(
+                {'pattern': '{unclosed'},
+                name_scheme,
+            )
+
+    def test_non_string_value_raises_exception(self, name_scheme):
+        """Non-string shouldn't be accepted.
+        """
+        with pytest.raises(ValidationError):
+            self.FakeTemplateModel.load(
+                {'pattern': 123},
+                name_scheme,
+            )
+
+
+class TestFileSystemItem:
+    """Tests for FileSystemItem
+    """
+
+    def test_requires_name_scheme_to_create(self):
+        """Should be dependent on a NameScheme.
+        """
+        my_config = {
+            'label': 'qc_type',
+            'patterns': ['{subject_id}*.nii.gz'],
+        }
+
+        with pytest.raises(
+            ValidationError, match='requires a valid NameScheme'
+        ):
+            config.FileSystemItem(**my_config)
+
+    def test_accepts_minimal_valid_configuration(self, name_scheme):
+        item = config.FileSystemItem.load(
+            {'label': 'anat', 'patterns': ['{subject_id}.nii.gz']},
+            name_scheme,
+        )
+
+        assert item.label == 'anat'
+        assert len(item.patterns) == 1
+        assert isinstance(item.patterns[0], re.Pattern)
+
+    def test_default_scope_is_series(self, name_scheme):
+        item = config.FileSystemItem.load(
+            {'label': 'anat', 'patterns': ['x']}, name_scheme
+        )
+        assert item.scope == 'series'
+
+    @pytest.mark.parametrize('scope', typing.get_args(config.ScopeTypes))
+    def test_accepts_all_valid_scope_types(self, name_scheme, scope):
+        item = config.FileSystemItem.load(
+            {'label': 'anat', 'patterns': ['x'], 'scope': scope}, name_scheme
+        )
+        assert item.scope == scope
+
+    def test_raises_on_invalid_scope(self, name_scheme):
+        with pytest.raises(ValidationError):
+            config.FileSystemItem.load(
+                {'label': 'anat', 'patterns': ['x'], 'scope': 'nope'},
+                name_scheme,
+            )
+
+    def test_default_stray_file_is_false(self, name_scheme):
+        item = config.FileSystemItem.load(
+            {'label': 'anat', 'patterns': ['x']}, name_scheme
+        )
+        assert item.stray_file is False
+
+    def test_default_append_path_and_load_vals_are_empty(self, name_scheme):
+        item = config.FileSystemItem.load(
+            {'label': 'anat', 'patterns': ['x']}, name_scheme
+        )
+        assert item.append_path == []
+        assert item.load_vals == []
+
+    def test_patterns_requires_at_least_one_entry(self, name_scheme):
+        with pytest.raises(ValidationError):
+            config.FileSystemItem.load(
+                {'label': 'anat', 'patterns': []}, name_scheme
+            )
+
+    def test_singular_pattern_normalized_to_patterns(self, name_scheme):
+        item = config.FileSystemItem.load(
+            {'label': 'anat', 'pattern': '{subject_id}.nii.gz'}, name_scheme
+        )
+        assert len(item.patterns) == 1
+
+    def test_singular_and_plural_pattern_both_given_raises(self, name_scheme):
+        with pytest.raises(ValidationError, match='not both'):
+            config.FileSystemItem.load(
+                {'label': 'anat', 'pattern': 'a', 'patterns': ['b']},
+                name_scheme,
+            )
+
+    def test_singular_load_val_normalized_to_load_vals(self, name_scheme):
+        item = config.FileSystemItem.load(
+            {
+                'label': 'anat',
+                'patterns': ['x'],
+                'load_val': {'file_format': 'yaml', 'values': []},
+            },
+            name_scheme,
+        )
+        assert len(item.load_vals) == 1
+        assert item.load_vals[0].file_format == 'yaml'
+
+    def test_load_val_and_load_vals_both_given_raises(self, name_scheme):
+        with pytest.raises(ValidationError, match='not both'):
+            config.FileSystemItem.load(
+                {
+                    'label': 'anat',
+                    'patterns': ['x'],
+                    'load_val': {'file_format': 'yaml', 'values': []},
+                    'load_vals': [{'file_format': 'yaml', 'values': []}],
+                },
+                name_scheme,
+            )
+
+    def test_append_path_short_form_string_is_normalized(self, name_scheme):
+        item = config.FileSystemItem.load(
+            {
+                'label': 'anat',
+                'patterns': ['x'],
+                'append_path': 'derivatives',
+            },
+            name_scheme,
+        )
+        assert len(item.append_path) == 1
+        assert len(item.append_path[0]) == 1
+        assert isinstance(item.append_path[0][0], re.Pattern)
+        assert item.append_path[0][0].pattern == 'derivatives'
+
+    def test_append_path_nested_list_form_accepted(self, name_scheme):
+        item = config.FileSystemItem.load(
+            {
+                'label': 'anat',
+                'patterns': ['x'],
+                'append_path': [['derivatives', 'preproc']],
+            },
+            name_scheme,
+        )
+        assert len(item.append_path) == 1
+        assert len(item.append_path[0]) == 2
+
+    def test_patterns_populated_via_name_scheme(self, name_scheme):
+        item = config.FileSystemItem.load(
+            {'label': 'anat', 'patterns': ['{subject}.nii.gz']}, name_scheme
+        )
+        assert item.patterns[0].pattern == (
+            name_scheme.scheme['subject'] + '.nii.gz'
+        )
+
+    def test_patterns_with_unknown_field_reference_raises(self, name_scheme):
+        with pytest.raises(ValidationError, match='unknown reference'):
+            config.FileSystemItem.load(
+                {'label': 'anat', 'patterns': ['{not_a_field}']}, name_scheme
+            )
+
+    def test_extra_field_forbidden(self, name_scheme):
+        with pytest.raises(ValidationError):
+            config.FileSystemItem.load(
+                {'label': 'anat', 'patterns': ['x'], 'whoopsy': 'field'},
+                name_scheme,
+            )
+
+
+class TestIgnoreFileSystemItem:
+    """Tests for IgnoreFileSystemItem
+    """
+
+    def test_label_defaults_to_ignore(self, name_scheme):
+        item = config.IgnoreFileSystemItem.load(
+            {'patterns': ['x']}, name_scheme
+        )
+        assert item.label == 'ignore'
+
+    def test_scope_is_forced_to_ignore(self, name_scheme):
+        item = config.IgnoreFileSystemItem.load(
+            {'patterns': ['x']}, name_scheme
+        )
+        assert item.scope == 'ignore'
+
+    def test_explicit_label_ignore_is_accepted(self, name_scheme):
+        item = config.IgnoreFileSystemItem.load(
+            {'label': 'ignore', 'patterns': ['x']}, name_scheme
+        )
+        assert item.label == 'ignore'
+
+    def test_other_label_values_are_rejected(self, name_scheme):
+        with pytest.raises(ValidationError):
+            config.IgnoreFileSystemItem.load(
+                {'label': 'not-ignore', 'patterns': ['x']}, name_scheme
+            )
+
+    def test_scope_cannot_be_overridden(self, name_scheme):
+        with pytest.raises(ValidationError):
+            config.IgnoreFileSystemItem.load(
+                {'patterns': ['x'], 'scope': 'dataset'}, name_scheme
+            )
+
+    def test_inherits_pattern_requirement_from_file_system_item(
+            self, name_scheme
+    ):
+        with pytest.raises(ValidationError):
+            config.IgnoreFileSystemItem.load({'patterns': []}, name_scheme)
+
+    def test_requires_name_scheme(self):
+        with pytest.raises(
+            ValidationError, match='requires a valid NameScheme'
+        ):
+            config.IgnoreFileSystemItem(patterns=['x'])
+
+
+class TestDatasetConfig:
+    """Tests for DatasetConfig
+    """
+
+    @pytest.fixture
+    def minimal_find(self):
+        return [{'label': 'anat', 'patterns': ['{subject_id}.nii.gz']}]
+
+    def test_requires_name_scheme(self, minimal_find):
+        with pytest.raises(
+            ValidationError, match='requires a valid NameScheme'
+        ):
+            config.DatasetConfig(
+                id='ds1', description='desc', find=minimal_find
+            )
+
+    def test_accepts_minimal_valid_configuration(
+            self, name_scheme, minimal_find
+    ):
+        ds = config.DatasetConfig.load(
+            {'id': 'ds1', 'description': 'desc', 'find': minimal_find},
+            name_scheme,
+        )
+
+        assert ds.id == 'ds1'
+        assert ds.description == 'desc'
+        assert len(ds.find) == 1
+        assert isinstance(ds.find[0], config.FileSystemItem)
+
+    def test_find_requires_at_least_one_entry(self, name_scheme):
+        with pytest.raises(ValidationError):
+            config.DatasetConfig.load(
+                {'id': 'ds1', 'description': 'desc', 'find': []},
+                name_scheme,
+            )
+
+    def test_ignore_and_post_processors_default_to_empty_list(
+            self, name_scheme, minimal_find
+    ):
+        ds = config.DatasetConfig.load(
+            {'id': 'ds1', 'description': 'desc', 'find': minimal_find},
+            name_scheme,
+        )
+        assert ds.ignore == []
+        assert ds.post_processors == []
+
+    def test_timepoint_dir_defaults_to_empty_list(
+            self, name_scheme, minimal_find
+    ):
+        ds = config.DatasetConfig.load(
+            {'id': 'ds1', 'description': 'desc', 'find': minimal_find},
+            name_scheme,
+        )
+        assert ds.timepoint_dir == []
+
+    def test_timepoint_dir_short_form_string_is_normalized(
+            self, name_scheme, minimal_find
+    ):
+        ds = config.DatasetConfig.load(
+            {
+                'id': 'ds1',
+                'description': 'desc',
+                'find': minimal_find,
+                'timepoint_dir': '{subject_id}',
+            },
+            name_scheme,
+        )
+        assert len(ds.timepoint_dir) == 1
+        assert len(ds.timepoint_dir[0]) == 1
+        assert isinstance(ds.timepoint_dir[0][0], re.Pattern)
+
+    def test_ignore_accepts_ignore_file_system_items(
+            self, name_scheme, minimal_find
+    ):
+        ds = config.DatasetConfig.load(
+            {
+                'id': 'ds1',
+                'description': 'desc',
+                'find': minimal_find,
+                'ignore': [{'patterns': ['._*']}],
+            },
+            name_scheme,
+        )
+        assert len(ds.ignore) == 1
+        assert ds.ignore[0].label == 'ignore'
+
+    def test_extra_field_forbidden(self, name_scheme, minimal_find):
+        with pytest.raises(ValidationError):
+            config.DatasetConfig.load(
+                {
+                    'id': 'ds1',
+                    'description': 'desc',
+                    'find': minimal_find,
+                    'whoopsy': True,
+                },
+                name_scheme,
+            )
+
+    def test_missing_required_fields_raises(self, name_scheme, minimal_find):
+        with pytest.raises(ValidationError):
+            config.DatasetConfig.load(
+                {'description': 'desc', 'find': minimal_find}, name_scheme
+            )
+
+        with pytest.raises(ValidationError):
+            config.DatasetConfig.load(
+                {'id': 'ds1', 'find': minimal_find}, name_scheme
+            )
+
+        with pytest.raises(ValidationError):
+            config.DatasetConfig.load(
+                {'id': 'ds1', 'description': 'desc'}, name_scheme
+            )

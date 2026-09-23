@@ -3,7 +3,7 @@
 import inspect
 import re
 from string import Formatter
-from typing import Any, Annotated, Callable, Literal, Self
+from typing import Annotated, Any, Callable, Literal, Self
 
 from pydantic import (BaseModel, BeforeValidator, ConfigDict, Field,
                       PrivateAttr, ValidationError, ValidationInfo,
@@ -416,10 +416,54 @@ def normalize_plural_field(
     return data
 
 
+def normalize_user_path(user_path: Any) -> list[list[str]]:
+    """Change path-related config values to expected format (list of lists).
+
+    All path-related configuration is expected to be a list of directory
+    levels to traverse, with each dir level potentially having multiple
+    patterns that may be accepted (i.e. another list).
+
+    This will output the user's configuration with the correct format, if
+    possible. Nested empty lists and empty strings will be ignored.
+    """
+    if isinstance(user_path, str):
+        return [[user_path]] if user_path else []
+
+    if not isinstance(user_path, list):
+        raise ValueError(
+            f'Invalid input: "{user_path}". Expected a string or a list.'
+        )
+
+    fixed_path = []
+    for entry in user_path:
+        if isinstance(entry, str):
+            if entry:
+                # Only append if not empty string
+                fixed_path.append([entry])
+        elif isinstance(entry, list):
+            if not all(isinstance(item, str) for item in entry):
+                raise ValueError(
+                    f'Invalid input: "{user_path}". Contents must be strings '
+                    'or lists of strings only.'
+                )
+            # Strip empty strings
+            filtered = [item for item in entry if item]
+            if filtered:
+                # Only append if not empty list
+                fixed_path.append(filtered)
+        else:
+            raise ValueError(
+                f'Invalid input: "{user_path}". Expected all contents to be '
+                'strings or a lists of strings.'
+            )
+
+    return fixed_path
+
+
 class FileValue(StrictBaseModel):
     """A single entry to be read from a metadata file and stored in a variable.
     """
-    keys: list[str]
+    keys: list[str] = Field(min_length=1)
     store: str
 
     @model_validator(mode='before')
@@ -434,7 +478,8 @@ class LoadedValues(StrictBaseModel):
     """Values that must be read from files during filesystem parsing.
     """
     file_format: FileTypes
-    values: list[FileValue]
+    # Can be an empty list when user wants to load entire file.
+    values: list[FileValue] = Field(default_factory=list)
 
 
 def _populate_template(value: Any, info: ValidationInfo) -> Any:
@@ -447,7 +492,7 @@ def _populate_template(value: Any, info: ValidationInfo) -> Any:
     if not info.context or 'name_scheme' not in info.context:
         raise ValueError('name_scheme must be provided in validation context.')
 
-    scheme = info.context['name_scheme']
+    scheme = info.context['name_scheme'].scheme
 
     try:
         unknown_fields = check_references(value, scheme)
@@ -467,16 +512,47 @@ TemplatedRegex = Annotated[re.Pattern[str],
                            BeforeValidator(_populate_template)]
 
 
-class FileSystemItem(StrictBaseModel):
+class NameSchemeDependent(StrictBaseModel):
+    """A convenience class for Models that require a NameScheme.
+    """
+
+    @classmethod
+    def load(cls, data: Any, name_scheme: NameScheme) -> Self:
+        """Create an instance with all required context.
+        """
+        return cls.model_validate(
+            data,
+            context={
+                'name_scheme': name_scheme,
+            }
+        )
+
+    @model_validator(mode='wrap')
+    @classmethod
+    def _require_name_scheme(cls, data, handler, info: ValidationInfo):
+        """Fail early with a clear message if user tries to init incorrectly.
+        """
+        if (not info.context or
+            'name_scheme' not in info.context or
+            info.context['name_scheme'] is None
+        ):
+            raise ValueError(
+                f'{cls.__name__} requires a valid NameScheme. '
+                f'Try {cls.__name__}.load(data, name_scheme) instead.'
+            )
+
+        return handler(data)
+
+
+class FileSystemItem(NameSchemeDependent):
     """Identifies an item to save/read from the filesystem.
     """
     label: str
     scope: ScopeTypes = 'series'
     stray_file: bool = False
-    append_path: list[TemplatedRegex] = Field(default_factory=list)
-    patterns: list[TemplatedRegex] = Field(default_factory=list)
+    append_path: list[list[TemplatedRegex]] = Field(default_factory=list)
+    patterns: list[TemplatedRegex] = Field(min_length=1)
     load_vals: list[LoadedValues] = Field(default_factory=list)
-
 
     @model_validator(mode='before')
     @classmethod
@@ -492,6 +568,17 @@ class FileSystemItem(StrictBaseModel):
                 data = normalize_plural_field(data, singular, plural)
         return data
 
+    @model_validator(mode='before')
+    @classmethod
+    def normalize_append_path(cls, data):
+        """Change short-form path formats to expected format.
+        """
+        if isinstance(data, dict) and 'append_path' in data:
+            normalized = normalize_user_path(data['append_path'])
+            data['append_path'] = normalized
+
+        return data
+
 
 class IgnoreFileSystemItem(FileSystemItem):
     """Represents a filesystem item that should be ignored when encountered.
@@ -500,6 +587,8 @@ class IgnoreFileSystemItem(FileSystemItem):
     doesn't want to receive error messages for certain files they expect
     to exist and don't want stored in the database.
     """
+    # No label needed
+    label: Literal['ignore'] = 'ignore'
     # Scope should always be 'ignore' and not configurable.
     scope: Literal['ignore'] = 'ignore'
 
@@ -545,3 +634,27 @@ def check_references(template: str, name_scheme: dict[str, str]) -> list[str]:
             invalid_references.append(field_name)
 
     return invalid_references
+
+
+class DatasetConfig(NameSchemeDependent):
+    """Configuration for ingesting a dataset.
+    """
+    id: str
+    description: str
+    timepoint_dir: list[list[TemplatedRegex]] = Field(default_factory=list)
+    append_path: list[list[TemplatedRegex]] = Field(default_factory=list)
+    find: list[FileSystemItem] = Field(min_length=1)
+    ignore: list[IgnoreFileSystemItem] = Field(default_factory=list)
+    post_processors: list[PostProcessorConfig] = Field(default_factory=list)
+
+    @model_validator(mode='before')
+    @classmethod
+    def normalize_paths(cls, data):
+        if isinstance(data, dict):
+            path_vars = ['append_path', 'timepoint_dir']
+            for path_type in path_vars:
+                if path_type in data:
+                    normalized = normalize_user_path(data[path_type])
+                    data[path_type] = normalized
+
+        return data
