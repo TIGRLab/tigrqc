@@ -1335,8 +1335,15 @@ class TestFileSystemItem:
             config.FileSystemItem(**my_config)
 
     def test_accepts_minimal_valid_configuration(self, name_scheme):
+        """Config with bare minimum of settings should work.
+        """
+        min_req_conf = {
+            'label': 'anat',
+            'patterns': ['{subject_id}.nii.gz'],
+        }
+
         item = config.FileSystemItem.load(
-            {'label': 'anat', 'patterns': ['{subject_id}.nii.gz']},
+            min_req_conf,
             name_scheme,
         )
 
@@ -1345,19 +1352,29 @@ class TestFileSystemItem:
         assert isinstance(item.patterns[0], re.Pattern)
 
     def test_default_scope_is_series(self, name_scheme):
+        """When not specified, scope should be set to 'series'.
+        """
         item = config.FileSystemItem.load(
-            {'label': 'anat', 'patterns': ['x']}, name_scheme
+            {'label': 'anat', 'patterns': ['x']},
+            name_scheme,
         )
+
         assert item.scope == 'series'
 
     @pytest.mark.parametrize('scope', typing.get_args(config.ScopeTypes))
     def test_accepts_all_valid_scope_types(self, name_scheme, scope):
+        """Scope should accept any of the pre-defined valid ScopeTypes.
+        """
         item = config.FileSystemItem.load(
-            {'label': 'anat', 'patterns': ['x'], 'scope': scope}, name_scheme
+            {'label': 'anat', 'patterns': ['x'], 'scope': scope},
+            name_scheme,
         )
+
         assert item.scope == scope
 
-    def test_raises_on_invalid_scope(self, name_scheme):
+    def test_raises_exception_on_invalid_scope(self, name_scheme):
+        """An unrecognized 'scope' value should be rejected.
+        """
         with pytest.raises(ValidationError):
             config.FileSystemItem.load(
                 {'label': 'anat', 'patterns': ['x'], 'scope': 'nope'},
@@ -1365,38 +1382,67 @@ class TestFileSystemItem:
             )
 
     def test_default_stray_file_is_false(self, name_scheme):
+        """Files expected to be nested in a subject dir unless told otherwise.
+        """
         item = config.FileSystemItem.load(
-            {'label': 'anat', 'patterns': ['x']}, name_scheme
+            {'label': 'anat', 'patterns': ['x']},
+            name_scheme,
         )
+
         assert item.stray_file is False
 
-    def test_default_append_path_and_load_vals_are_empty(self, name_scheme):
+    def test_default_append_path_is_empty_list(self, name_scheme):
+        """By default no path will be appended to find the file.
+        """
         item = config.FileSystemItem.load(
-            {'label': 'anat', 'patterns': ['x']}, name_scheme
+            {'label': 'anat', 'patterns': ['x']},
+            name_scheme,
         )
         assert item.append_path == []
+
+    def test_default_load_vals_is_empty_list(self, name_scheme):
+        """By default no values will be read from the file.
+        """
+        item = config.FileSystemItem.load(
+            {'label': 'anat', 'patterns': ['x']},
+            name_scheme,
+        )
+
         assert item.load_vals == []
 
     def test_patterns_requires_at_least_one_entry(self, name_scheme):
+        """At least one pattern must be given to identify the file.
+        """
         with pytest.raises(ValidationError):
             config.FileSystemItem.load(
-                {'label': 'anat', 'patterns': []}, name_scheme
+                {'label': 'anat', 'patterns': []},
+                name_scheme,
             )
 
-    def test_singular_pattern_normalized_to_patterns(self, name_scheme):
+    def test_config_may_use_pattern_instead_of_patterns(self, name_scheme):
+        """Accept either 'pattern' or 'patterns' in the user config.
+        """
         item = config.FileSystemItem.load(
-            {'label': 'anat', 'pattern': '{subject_id}.nii.gz'}, name_scheme
+            {'label': 'anat', 'pattern': '{subject_id}.nii.gz'},
+            name_scheme,
         )
+
         assert len(item.patterns) == 1
 
-    def test_singular_and_plural_pattern_both_given_raises(self, name_scheme):
+    def test_using_both_singular_and_plural_pattern_key_raises_exception(
+        self, name_scheme
+    ):
+        """Either 'pattern' or 'patterns' can be used, but not both.
+        """
         with pytest.raises(ValidationError, match='not both'):
             config.FileSystemItem.load(
                 {'label': 'anat', 'pattern': 'a', 'patterns': ['b']},
                 name_scheme,
             )
 
-    def test_singular_load_val_normalized_to_load_vals(self, name_scheme):
+    def test_singular_form_of_load_vals_setting_accepted(self, name_scheme):
+        """Config may use 'load_val' instead of 'load_vals'.
+        """
         item = config.FileSystemItem.load(
             {
                 'label': 'anat',
@@ -1405,10 +1451,15 @@ class TestFileSystemItem:
             },
             name_scheme,
         )
+
         assert len(item.load_vals) == 1
         assert item.load_vals[0].file_format == 'yaml'
 
-    def test_load_val_and_load_vals_both_given_raises(self, name_scheme):
+    def test_using_both_singular_and_plural_load_vals_key_raises_exception(
+        self, name_scheme
+    ):
+        """Either 'load_val' or 'load_vals' may be used but not both.
+        """
         with pytest.raises(ValidationError, match='not both'):
             config.FileSystemItem.load(
                 {
@@ -1420,7 +1471,11 @@ class TestFileSystemItem:
                 name_scheme,
             )
 
-    def test_append_path_short_form_string_is_normalized(self, name_scheme):
+    def test_append_path_given_as_plain_string_changes_to_expected_format(
+        self, name_scheme
+    ):
+        """append_path may be given as a string, but must be normalized if so.
+        """
         item = config.FileSystemItem.load(
             {
                 'label': 'anat',
@@ -1429,12 +1484,15 @@ class TestFileSystemItem:
             },
             name_scheme,
         )
+
         assert len(item.append_path) == 1
         assert len(item.append_path[0]) == 1
         assert isinstance(item.append_path[0][0], re.Pattern)
         assert item.append_path[0][0].pattern == 'derivatives'
 
     def test_append_path_nested_list_form_accepted(self, name_scheme):
+        """append_path by default expected as a list of lists of patterns.
+        """
         item = config.FileSystemItem.load(
             {
                 'label': 'anat',
@@ -1443,24 +1501,36 @@ class TestFileSystemItem:
             },
             name_scheme,
         )
+
         assert len(item.append_path) == 1
         assert len(item.append_path[0]) == 2
 
-    def test_patterns_populated_via_name_scheme(self, name_scheme):
+    def test_patterns_populated_via_given_name_scheme(self, name_scheme):
+        """Patterns given by config should be filled in by name scheme.
+        """
         item = config.FileSystemItem.load(
-            {'label': 'anat', 'patterns': ['{subject}.nii.gz']}, name_scheme
+            {'label': 'anat', 'patterns': ['{subject}.nii.gz']},
+            name_scheme,
         )
+
         assert item.patterns[0].pattern == (
             name_scheme.scheme['subject'] + '.nii.gz'
         )
 
-    def test_patterns_with_unknown_field_reference_raises(self, name_scheme):
+    def test_patterns_with_unknown_field_name_raises_exception(
+        self, name_scheme
+    ):
+        """A pattern with a field name not defined anywhere is a fatal error.
+        """
         with pytest.raises(ValidationError, match='unknown reference'):
             config.FileSystemItem.load(
-                {'label': 'anat', 'patterns': ['{not_a_field}']}, name_scheme
+                {'label': 'anat', 'patterns': ['{not_a_field}']},
+                name_scheme,
             )
 
-    def test_extra_field_forbidden(self, name_scheme):
+    def test_unknown_config_fields_are_forbidden(self, name_scheme):
+        """Config fields not explicitly allowed raise an exception.
+        """
         with pytest.raises(ValidationError):
             config.FileSystemItem.load(
                 {'label': 'anat', 'patterns': ['x'], 'whoopsy': 'field'},
@@ -1472,43 +1542,55 @@ class TestIgnoreFileSystemItem:
     """Tests for IgnoreFileSystemItem
     """
 
-    def test_label_defaults_to_ignore(self, name_scheme):
+    def test_label_is_set_to_ignore(self, name_scheme):
+        """Ignored items should always have their label set to 'ignore'
+        """
         item = config.IgnoreFileSystemItem.load(
-            {'patterns': ['x']}, name_scheme
+            {'patterns': ['x']},
+            name_scheme,
         )
+
         assert item.label == 'ignore'
 
-    def test_scope_is_forced_to_ignore(self, name_scheme):
+    def test_scope_is_set_to_ignore(self, name_scheme):
+        """Ignored items should always have a scope of 'ignore'
+        """
         item = config.IgnoreFileSystemItem.load(
-            {'patterns': ['x']}, name_scheme
+            {'patterns': ['x']},
+            name_scheme,
         )
+
         assert item.scope == 'ignore'
 
-    def test_explicit_label_ignore_is_accepted(self, name_scheme):
-        item = config.IgnoreFileSystemItem.load(
-            {'label': 'ignore', 'patterns': ['x']}, name_scheme
-        )
-        assert item.label == 'ignore'
-
-    def test_other_label_values_are_rejected(self, name_scheme):
+    def test_label_cannot_be_overriden(self, name_scheme):
+        """No values should be accepted for label except 'ignore'
+        """
         with pytest.raises(ValidationError):
             config.IgnoreFileSystemItem.load(
-                {'label': 'not-ignore', 'patterns': ['x']}, name_scheme
+                {'label': 'not-ignore', 'patterns': ['x']},
+                name_scheme,
             )
 
     def test_scope_cannot_be_overridden(self, name_scheme):
+        """No values should be accepted for scope except 'ignore'
+        """
         with pytest.raises(ValidationError):
             config.IgnoreFileSystemItem.load(
-                {'patterns': ['x'], 'scope': 'dataset'}, name_scheme
+                {'patterns': ['x'], 'scope': 'dataset'},
+                name_scheme,
             )
 
-    def test_inherits_pattern_requirement_from_file_system_item(
+    def test_requires_a_pattern_like_a_normal_FileSystemItem(
             self, name_scheme
     ):
+        """At least one pattern must be given to identify the ignored item.
+        """
         with pytest.raises(ValidationError):
             config.IgnoreFileSystemItem.load({'patterns': []}, name_scheme)
 
-    def test_requires_name_scheme(self):
+    def test_requires_a_name_scheme(self):
+        """A name scheme is always required for file system items.
+        """
         with pytest.raises(
             ValidationError, match='requires a valid NameScheme'
         ):
@@ -1521,9 +1603,13 @@ class TestDatasetConfig:
 
     @pytest.fixture
     def minimal_find(self):
+        """Minimum required configuration for a 'find' config entry.
+        """
         return [{'label': 'anat', 'patterns': ['{subject_id}.nii.gz']}]
 
     def test_requires_name_scheme(self, minimal_find):
+        """A dataset always requires a name scheme be provided.
+        """
         with pytest.raises(
             ValidationError, match='requires a valid NameScheme'
         ):
@@ -1534,6 +1620,8 @@ class TestDatasetConfig:
     def test_accepts_minimal_valid_configuration(
             self, name_scheme, minimal_find
     ):
+        """Should work with the bare min config (and everything else default).
+        """
         ds = config.DatasetConfig.load(
             {'id': 'ds1', 'description': 'desc', 'find': minimal_find},
             name_scheme,
@@ -1545,34 +1633,53 @@ class TestDatasetConfig:
         assert isinstance(ds.find[0], config.FileSystemItem)
 
     def test_find_requires_at_least_one_entry(self, name_scheme):
+        """A dataset cannot exist without at least one file type to load in.
+        """
         with pytest.raises(ValidationError):
             config.DatasetConfig.load(
                 {'id': 'ds1', 'description': 'desc', 'find': []},
                 name_scheme,
             )
 
-    def test_ignore_and_post_processors_default_to_empty_list(
-            self, name_scheme, minimal_find
-    ):
+    def test_ignore_defaults_to_empty_list(self, name_scheme, minimal_find):
+        """Ignore should be an empty list if not in configuration.
+        """
         ds = config.DatasetConfig.load(
             {'id': 'ds1', 'description': 'desc', 'find': minimal_find},
             name_scheme,
         )
+
         assert ds.ignore == []
+
+    def test_post_processors_defaults_to_empty_list(
+        self, name_scheme, minimal_find
+    ):
+        """No post processors should be defined if user doesn't ask for them.
+        """
+        ds = config.DatasetConfig.load(
+            {'id': 'ds1', 'description': 'desc', 'find': minimal_find},
+            name_scheme,
+        )
+
         assert ds.post_processors == []
 
     def test_timepoint_dir_defaults_to_empty_list(
             self, name_scheme, minimal_find
     ):
+        """Timepoint dir shouldn't be used if not given explicitly.
+        """
         ds = config.DatasetConfig.load(
             {'id': 'ds1', 'description': 'desc', 'find': minimal_find},
             name_scheme,
         )
+
         assert ds.timepoint_dir == []
 
-    def test_timepoint_dir_short_form_string_is_normalized(
+    def test_timepoint_dir_accepts_a_string_pattern(
             self, name_scheme, minimal_find
     ):
+        """Timepoint dir can be a string if no alt patterns or nested dirs.
+        """
         ds = config.DatasetConfig.load(
             {
                 'id': 'ds1',
@@ -1582,13 +1689,16 @@ class TestDatasetConfig:
             },
             name_scheme,
         )
+
         assert len(ds.timepoint_dir) == 1
         assert len(ds.timepoint_dir[0]) == 1
         assert isinstance(ds.timepoint_dir[0][0], re.Pattern)
 
-    def test_ignore_accepts_ignore_file_system_items(
+    def test_ignore_entries_get_scope_and_label_set_to_ignore(
             self, name_scheme, minimal_find
     ):
+        """Items listed in ignore config list must not get normal scope/label.
+        """
         ds = config.DatasetConfig.load(
             {
                 'id': 'ds1',
@@ -1598,10 +1708,17 @@ class TestDatasetConfig:
             },
             name_scheme,
         )
-        assert len(ds.ignore) == 1
-        assert ds.ignore[0].label == 'ignore'
 
-    def test_extra_field_forbidden(self, name_scheme, minimal_find):
+        assert len(ds.ignore) == 1
+        assert isinstance(ds.ignore[0], config.IgnoreFileSystemItem)
+        assert ds.ignore[0].label == 'ignore'
+        assert ds.ignore[0].scope == 'ignore'
+
+    def test_unknown_field_names_raise_exception(
+        self, name_scheme, minimal_find
+    ):
+        """Typos and unknown fields in config is a fatal error.
+        """
         with pytest.raises(ValidationError):
             config.DatasetConfig.load(
                 {
@@ -1613,7 +1730,11 @@ class TestDatasetConfig:
                 name_scheme,
             )
 
-    def test_missing_required_fields_raises(self, name_scheme, minimal_find):
+    def test_missing_required_fields_raises_exception(
+        self, name_scheme, minimal_find
+    ):
+        """Any required field that's missing is a fatal error.
+        """
         with pytest.raises(ValidationError):
             config.DatasetConfig.load(
                 {'description': 'desc', 'find': minimal_find}, name_scheme
