@@ -1,6 +1,6 @@
 """Tests for tigrqc.load_data.config_validators
 """
-# pylint: disable=redefined-outer-name
+# pylint: disable=redefined-outer-name,use-implicit-booleaness-not-comparison
 import importlib
 import re
 import typing
@@ -834,6 +834,8 @@ class TestCheckReferences:
             config.check_references('{subject{site}}', name_scheme)
 
     def test_only_reports_invalid_refs_when_valid_exist_too(self, name_scheme):
+        """Only reports the invalid refs, and ignores valid when both present.
+        """
         result = config.check_references(
             '{subject} {timepoint:04d} {site!s}', name_scheme
         )
@@ -844,7 +846,7 @@ class TestCheckReferences:
         '{{name}}',
         'a {{literal}} b',
     ])
-    def test_escaped_braces_arent_references(self, template, name_scheme):
+    def test_escaped_braces_arent_references(self, template):
         """Escaped braces are treated as a literal string.
         """
         assert config.check_references(template, {}) == []
@@ -865,6 +867,8 @@ class TestCheckReferences:
             config.check_references(template, name_scheme)
 
     def test_does_not_modify_name_scheme(self, name_scheme):
+        """Name scheme should not be modified when its references are checked.
+        """
         orig_scheme = dict(name_scheme)
         config.check_references('{subject}{missing}', name_scheme)
         assert orig_scheme == name_scheme
@@ -1059,12 +1063,13 @@ class TestNameSchemeDependent:
             @field_validator('name')
             @classmethod
             def store_context(cls, value, info):
+                """Check context propagates correctly.
+                """
                 assert info.context is not None
                 assert info.context['name_scheme'] == name_scheme
                 return value
 
-
-        result = TestModel.load({'name': 'testing'}, name_scheme)
+        TestModel.load({'name': 'testing'}, name_scheme)
 
     def test_direct_init_raises_validation_exception(self):
         """Shouldn't allow traditional init without a NameScheme instance.
@@ -1117,12 +1122,12 @@ class TestNormalizeUserPath:
     def test_nonempty_string_gets_wrapped_in_list_of_list(self):
         """A non-empty string should be changed to [[str]]
         """
-        assert config.normalize_user_path("foo") == [["foo"]]
+        assert config.normalize_user_path('foo') == [['foo']]
 
     def test_empty_string_returns_empty_list(self):
         """An empty string should be treated as 'unset'.
         """
-        assert config.normalize_user_path("") == []
+        assert config.normalize_user_path('') == []
 
     def test_empty_list_returns_empty_list(self):
         """Empty list should be unchanged.
@@ -1132,46 +1137,46 @@ class TestNormalizeUserPath:
     def test_list_of_one_string_gets_wrapped_in_outer_list(self):
         """If list provides [str] it should normalize to [[str]]
         """
-        assert config.normalize_user_path(["foo"]) == [["foo"]]
+        assert config.normalize_user_path(['foo']) == [['foo']]
 
     def test_list_of_multiple_strings_get_wrapped_in_lists(self):
         """A list of strings should get each string wrapped in a list.
         """
-        assert config.normalize_user_path(["foo", "bar"]) == [["foo"], ["bar"]]
+        assert config.normalize_user_path(['foo', 'bar']) == [['foo'], ['bar']]
 
     def test_empty_string_entries_are_discarded(self):
         """Empty strings should be treated as user error and ignored.
         """
-        user_input = ["foo", "", "bar"]
-        expected = [["foo"], ["bar"]]
+        user_input = ['foo', '', 'bar']
+        expected = [['foo'], ['bar']]
         assert config.normalize_user_path(user_input) == expected
 
     def test_all_empty_string_entries_collapse_to_empty_list(self):
         """List of empty strings collapses to 'unset' state (an empty list).
         """
-        assert config.normalize_user_path(["", "", ""]) == []
+        assert config.normalize_user_path(['', '', '']) == []
 
     def test_single_nested_list_unchanged(self):
         """No changes needed if list containing one list of strings given.
         """
-        assert config.normalize_user_path([["foo", "bar"]]) == [["foo", "bar"]]
+        assert config.normalize_user_path([['foo', 'bar']]) == [['foo', 'bar']]
 
     def test_nested_list_has_empty_strings_filtered_out(self):
         """Empty strings in a nested list should also be filtered out.
         """
-        user_input = [["foo", "", "bar"]]
-        expected = [["foo", "bar"]]
+        user_input = [['foo', '', 'bar']]
+        expected = [['foo', 'bar']]
         assert config.normalize_user_path(user_input) == expected
 
     def test_nested_empty_list_with_empty_string_becomes_empty_list(self):
         """A nested empty list with an empty string is same as 'unset'.
         """
-        assert config.normalize_user_path([[""]]) == []
+        assert config.normalize_user_path([['']]) == []
 
     def test_nested_list_of_multiple_empty_strings_becomes_empty_list(self):
         """A nested list with multiple empty strings is treated as 'unset'.
         """
-        assert config.normalize_user_path([["", "", ""]]) == []
+        assert config.normalize_user_path([['', '', '']]) == []
 
     def test_empty_nested_list_becomes_plain_empty_list(self):
         """A nested empty list is treated as 'unset'.
@@ -1181,17 +1186,17 @@ class TestNormalizeUserPath:
     def test_handles_mixed_strings_and_lists(self):
         """It's ok for user to specify mix of plain strings and lists of str.
         """
-        assert config.normalize_user_path(["foo", ["bar", "baz"]]) == [
-            ["foo"],
-            ["bar", "baz"],
+        assert config.normalize_user_path(['foo', ['bar', 'baz']]) == [
+            ['foo'],
+            ['bar', 'baz'],
         ]
 
     def test_handles_mixed_str_list_and_empty_items(self):
         """Mix of valid and empty items should keep valid and discard empty.
         """
-        assert config.normalize_user_path(["foo", "", ["bar", ""], [""]]) == [
-            ["foo"],
-            ["bar"],
+        assert config.normalize_user_path(['foo', '', ['bar', ''], ['']]) == [
+            ['foo'],
+            ['bar'],
         ]
 
     def test_non_string_non_list_raises_exception(self):
@@ -1216,7 +1221,7 @@ class TestNormalizeUserPath:
         """Catches invalid input mixed with valid.
         """
         with pytest.raises(ValueError):
-            config.normalize_user_path([["foo", 1]])
+            config.normalize_user_path([['foo', 1]])
 
     def test_top_level_entry_of_wrong_type_raises(self):
         """Catches invalid input nested in a list.
@@ -1228,7 +1233,7 @@ class TestNormalizeUserPath:
         """Dict within list not accepted.
         """
         with pytest.raises(ValueError):
-            config.normalize_user_path([{"foo": "bar"}])
+            config.normalize_user_path([{'foo': 'bar'}])
 
 
 @pytest.fixture
@@ -1580,7 +1585,7 @@ class TestIgnoreFileSystemItem:
                 name_scheme,
             )
 
-    def test_requires_a_pattern_like_a_normal_FileSystemItem(
+    def test_requires_a_pattern_like_a_normal_file_system_item(
             self, name_scheme
     ):
         """At least one pattern must be given to identify the ignored item.

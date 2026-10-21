@@ -399,6 +399,20 @@ def normalize_plural_field(
         data: dict[Any, Any], singular: str, plural: str
 ) -> dict[Any, Any]:
     """Change fields that can accept singular or plural names into plural form.
+
+    Args:
+        data: A configuration dictionary to normalize.
+        singular: The singular form of the key being normalized (e.g.
+            'pattern').
+        plural: The plural form of the key being normalized (e.g. 'patterns').
+
+    Returns:
+        The original configuration dictionary, with the given key in its to
+        plural form and the value in list form, if it wasn't already.
+
+    Raises:
+        ValueError: If both singular and plural form are present in the
+            configuration at once.
     """
     if singular in data and plural in data:
         raise ValueError(
@@ -469,6 +483,8 @@ class FileValue(StrictBaseModel):
     @model_validator(mode='before')
     @classmethod
     def normalize_keys(cls, data):
+        """Normalize singular 'key' entries to plural 'keys' form if present.
+        """
         if isinstance(data, dict):
             data = normalize_plural_field(data, 'key', 'keys')
         return data
@@ -484,6 +500,21 @@ class LoadedValues(StrictBaseModel):
 
 def _populate_template(value: Any, info: ValidationInfo) -> Any:
     """Take a template string and populate it via a name scheme.
+
+    Args:
+        value: A template that may need to be filled in with components from
+            the given naming scheme.
+        info: The pydantic ValidationInfo object of the caller. Holds context
+            necessary for validation (like name_scheme).
+
+    Returns:
+        The template, filled in by the naming scheme, or the original
+            unmodified value if it's not recognizeable as a template so that
+            pydantic may report the type error normally.
+
+    Raises:
+        ValueError: If 'name_scheme' is not defined in the context of the
+            caller or if the template is invalid for any reason.
     """
     if not isinstance(value, str):
         # Let pydantic's normal validation process generate an error.
@@ -532,7 +563,8 @@ class NameSchemeDependent(StrictBaseModel):
     def _require_name_scheme(cls, data, handler, info: ValidationInfo):
         """Fail early with a clear message if user tries to init incorrectly.
         """
-        if (not info.context or
+        if (
+            not info.context or
             'name_scheme' not in info.context or
             info.context['name_scheme'] is None
         ):
@@ -650,6 +682,8 @@ class DatasetConfig(NameSchemeDependent):
     @model_validator(mode='before')
     @classmethod
     def normalize_paths(cls, data):
+        """Normalize all path entries which may take string or list of lists.
+        """
         if isinstance(data, dict):
             path_vars = ['append_path', 'timepoint_dir']
             for path_type in path_vars:
