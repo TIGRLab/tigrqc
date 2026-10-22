@@ -999,11 +999,11 @@ class TestLoadedValues:
         """Config object should be made when valid config given.
         """
         lv = config.LoadedValues(
-            file_format='yaml',
+            format='yaml',
             values=[config.FileValue(key='a', store='x')],
         )
 
-        assert lv.file_format == 'yaml'
+        assert lv.format == 'yaml'
         assert len(lv.values) == 1
         assert lv.values[0].keys == ['a']
 
@@ -1011,7 +1011,7 @@ class TestLoadedValues:
         """Pydantic should coerce a dict to a FileValue automatically.
         """
         lv = config.LoadedValues(
-            file_format='json',
+            format='json',
             values=[{'key': 'a', 'store': 'x'}],
         )
 
@@ -1020,7 +1020,7 @@ class TestLoadedValues:
     def test_empty_values_list_allowed(self):
         """An empty values list is allowed if whole file must be read/stored.
         """
-        lv = config.LoadedValues(file_format='yaml', values=[])
+        lv = config.LoadedValues(format='yaml', values=[])
 
         assert lv.values == []
 
@@ -1028,7 +1028,7 @@ class TestLoadedValues:
         """Unrecognized file formats should raise a validation error.
         """
         with pytest.raises(ValidationError):
-            config.LoadedValues(file_format='not-a-real-format-xyz', values=[])
+            config.LoadedValues(format='not-a-real-format-xyz', values=[])
 
 
 class TestNameSchemeDependent:
@@ -1405,15 +1405,15 @@ class TestFileSystemItem:
         )
         assert item.append_path == []
 
-    def test_default_load_vals_is_empty_list(self, name_scheme):
-        """By default no values will be read from the file.
+    def test_default_load_vals_is_none(self, name_scheme):
+        """By default no values will be read from the file being discovered.
         """
         item = config.FileSystemItem.load(
             {'label': 'anat', 'patterns': ['x']},
             name_scheme,
         )
 
-        assert item.load_vals == []
+        assert item.load_vals == None
 
     def test_patterns_requires_at_least_one_entry(self, name_scheme):
         """At least one pattern must be given to identify the file.
@@ -1442,37 +1442,6 @@ class TestFileSystemItem:
         with pytest.raises(ValidationError, match='not both'):
             config.FileSystemItem.load(
                 {'label': 'anat', 'pattern': 'a', 'patterns': ['b']},
-                name_scheme,
-            )
-
-    def test_singular_form_of_load_vals_setting_accepted(self, name_scheme):
-        """Config may use 'load_val' instead of 'load_vals'.
-        """
-        item = config.FileSystemItem.load(
-            {
-                'label': 'anat',
-                'patterns': ['x'],
-                'load_val': {'file_format': 'yaml', 'values': []},
-            },
-            name_scheme,
-        )
-
-        assert len(item.load_vals) == 1
-        assert item.load_vals[0].file_format == 'yaml'
-
-    def test_using_both_singular_and_plural_load_vals_key_raises_exception(
-        self, name_scheme
-    ):
-        """Either 'load_val' or 'load_vals' may be used but not both.
-        """
-        with pytest.raises(ValidationError, match='not both'):
-            config.FileSystemItem.load(
-                {
-                    'label': 'anat',
-                    'patterns': ['x'],
-                    'load_val': {'file_format': 'yaml', 'values': []},
-                    'load_vals': [{'file_format': 'yaml', 'values': []}],
-                },
                 name_scheme,
             )
 

@@ -493,7 +493,7 @@ class FileValue(StrictBaseModel):
 class LoadedValues(StrictBaseModel):
     """Values that must be read from files during filesystem parsing.
     """
-    file_format: FileTypes
+    format: FileTypes
     # Can be an empty list when user wants to load entire file.
     values: list[FileValue] = Field(default_factory=list)
 
@@ -584,7 +584,7 @@ class FileSystemItem(NameSchemeDependent):
     stray_file: bool = False
     append_path: list[list[TemplatedRegex]] = Field(default_factory=list)
     patterns: list[TemplatedRegex] = Field(min_length=1)
-    load_vals: list[LoadedValues] = Field(default_factory=list)
+    load_vals: LoadedValues | None = None
 
     @model_validator(mode='before')
     @classmethod
@@ -594,7 +594,6 @@ class FileSystemItem(NameSchemeDependent):
         if isinstance(data, dict):
             attrs = [
                 ('pattern', 'patterns'),
-                ('load_val', 'load_vals'),
             ]
             for singular, plural in attrs:
                 data = normalize_plural_field(data, singular, plural)
