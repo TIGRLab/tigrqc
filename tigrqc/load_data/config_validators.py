@@ -691,3 +691,301 @@ class DatasetConfig(NameSchemeDependent):
                     data[path_type] = normalized
 
         return data
+
+
+##########################################################################
+#### Everything from here down is temporary garbage
+
+from dataclasses import dataclass, field
+
+@dataclass
+class InterForm:
+    """Intermediary form for constructing tree form.
+    """
+    path: list[list[TemplatedRegex]]
+    patterns: list[TemplatedRegex]
+    entry: FileSystemItem | None = None
+    children: list[FileSystemItem] = field(default_factory=list)
+
+
+def is_grouped(entry: FileSystemItem) -> bool:
+    """Check if a FileSystemItem is expected to be grouped into timepoint dirs.
+    """
+    if entry.scope == 'dataset':
+        # Dataset level files don't get grouped into subject/timepoint dirs.
+        return False
+
+    if entry.stray_file:
+        # Files deliberately marked 'stray' also don't
+        return False
+
+    return True
+
+
+def make_inter_form(ds_conf: DatasetConfig) -> list[InterForm]:
+    """Convert items from a dataset config into an intermediate form.
+
+    This intermediate form can then be used to construct a tree of regexes
+    to efficiently match while parsing an actual file tree.
+    """
+    entries = list(ds_conf.find)
+    # 'strict' mode needs to be checked here...
+    # Turn off adding ignore items if not strict checking.
+    entries.extend(ds_conf.ignore)
+
+    grouped = []
+    free_items = []
+    for entry in entries:
+        if ds_conf.timepoint_dir and is_grouped(entry):
+            grouped.append(
+                InterForm(
+                    path=entry.append_path,
+                    patterns=entry.patterns,
+                    entry=entry,
+                )
+            )
+        else:
+            free_items.append(
+                InterForm(
+                    path=entry.append_path,
+                    patterns=entry.patterns,
+                    entry=entry,
+                )
+            )
+
+    if ds_conf.timepoint_dir:
+        *pseudo_append_path, pseudo_patterns = ds_conf.timepoint_dir
+        # The 'grouped' items get nested within the timepoint_dir
+        free_items.append(
+            InterForm(
+                path=pseudo_append_path,
+                patterns=pseudo_patterns,
+                children=grouped,
+            )
+        )
+
+    return free_items
+
+
+@dataclass
+class TreeNode:
+    """A node representing a single directory or file.
+    """
+    files: dict[TemplatedRegex, InterForm] = field(default_factory=dict)
+    subdirs: dict[TemplatedRegex, InterForm] = field(default_factory=dict)
+    # Indicates anything matching should be saved to the database as
+    # a 'timepoint_dir' / collection of files.
+    is_tp_dir: bool = False
+
+
+def make_tree(conf_items):
+    """parse_data.make_tree
+
+    Take parseable-format nodes and assemble them into a regex tree for
+    matching against the filesystem being parsed.
+    """
+    files = {}
+    subdirs = {}
+
+    for entry in conf_items:
+        if entry.path != []:
+            # Gather every directory entry first before you recurse, to
+            # catch redundancies up front.
+            current_dir, *remaining = entry.path
+            for alt_pattern in current_dir:
+                subdirs.setdefault(alt_pattern, []).append((remaining, entry))
+            continue
+
+        # base case
+        # Found a specific item or a timepoint dir (which is a subtree)
+        if entry.children:
+            # Create a subtree for each accepted timepoint_dir directory name
+            for alt_pattern in entry.patterns:
+                node = make_tree(entry.children)
+                # This indicates the directory should be saved in the database.
+                node.tp_dir = True
+                files[alt_pattern] = node
+        else:
+            # Item represents a plain file
+            for regex in entry.patterns:
+                if regex in files:
+                    raise Exception(
+                        f'Duplicate file path/pattern given: {regex}'
+                    )
+                files[regex] = entry
+
+    # Make sub-trees for the nested dirs
+    final_dirs = {}
+    for regex, entry in subdirs.items():
+        node = make_tree(entry)
+        final_dirs[regex] = node
+
+    return TreeNode(files=files, subdirs=final_dirs)
+
+
+def read_source_dir(source_path, conf_tree, collected=None, strict=True):
+    """Parse a source directory using the tree form of the user configuration.
+
+    Strict controls whether to report unmatched items as errors. If it's used,
+    reporting may be turned off for select items by explicitly adding an
+    'ignore' item for them in the dataset configuration.
+    """
+    collected = collected or {}
+    found = {
+        'tp_dirs': [],
+        'files': [],
+    }
+    # This isn't collected if strict=False
+    fails = []
+
+    for item in source_path.iterdir():
+        entry = None
+        for regex in conf_tree.files:
+            match = regex.match(item.name)
+            if match:
+                entry = match.groupdict()
+                entry['path'] = item
+                entry['conf'] = conf_tree.files[regex]
+                if entry['conf'].entry.load_vals:
+                    # Needs implementation still
+                    load_metadata(entry)
+                break
+
+        if entry:
+            all_vals = {**collected, **entry}
+            # Found a match to a terminal item.
+            if entry['conf'].entry.scope == 'ignore':
+                # Deliberately ignore, so pass
+                continue
+            elif entry['conf'].is_tp_dir:
+                found['tp_dirs'].append(all_vals)
+            else:
+                found['files'].append(all_vals)
+            continue
+
+        # No terminal item matched. If the item is not a dir, this an error.
+        if not item.is_dir():
+            if strict:
+                fails.append(f'Unknown file found - {item}')
+            continue
+
+        match = None
+        for dir_regex in conf_tree.subdirs:
+            m = dir_regex.match(item.name)
+            if m:
+                match = m
+                entry = {**collected, **match.groupdict()}
+                conf = conf_tree.subdirs[dir_regex]
+                break
+
+        if not match:
+            if strict:
+                fails.append(f'Unknown directory found - {item}')
+            continue
+
+        # Collect files recursively from this directory
+        subdir_results, subdir_fails = read_source_dir(
+            item, conf_tree, entry
+        )
+        found['tp_dirs'].extend(subdir_results['tp_dirs'])
+        found['files'].extend(subdir_results['files'])
+        fails.extend(subdir_fails)
+
+    return found, fails
+
+
+def pydantic_load(ds_conf):
+    """This is a temporary load function.
+
+    Another prototype to get closer to a final setup.
+
+    Takes in the pydantic class for a dataset config.
+    """
+    return
+
+
+# def make_inter_form(ds_conf):
+#     """
+#     parse_data.make_parseable(find, timepoint_dir, ignore)
+#     """
+#     # To avoid modifying orig list
+#     entries = list(ds_conf.find)
+#     # safe even if no ignore items
+#     # But might want to skip, if strict is turned off?
+#     entries.extend(ds_conf.ignore)
+
+#     nested = []
+#     parseable = []
+#     for entry in entries:
+#         if (
+#                 entry.scope == 'dataset' or
+#                 entry.stray_file or
+#                 not ds_conf.timepoint_dir
+#         ):
+#             parseable.append((entry.append_path, entry))
+#         else:
+#             nested.append((entry.append_path, entry))
+
+#     # This doesn't really work now, because most entries are FindItem
+#     # and now this pseudo one is a dict.
+#     if ds_conf.timepoint_dir:
+#         # All of path except last part is pseudo-append path
+#         *fake_append_path, fake_pattern = ds_conf.timepoint_dir
+#         tp_dir = {
+#             'append_path': fake_append_path,
+#             'pattern': fake_pattern,
+#             'sub_entries': nested
+#         }
+#         parseable.append((fake_append_path, tp_dir))
+
+#     # Maybe can take just append paths + patterns, but keep separate
+#     # list of nested items (also append_path + patterns) and resume
+#     # search per timepoint dir after discovering them like non-nested
+#     # find items? i.e two searches and always on just path + pattern
+#     return parseable
+
+
+# def make_tree(parseable_nodes):
+#     """
+#     parse_data.make_tree
+#     """
+#     files = {}
+#     dirs = {}
+
+#     for path, entry in parseable_nodes:
+#         if path != []:
+#             # Gather every directory entry first before you recurse, to
+#             # catch redundancies up front.
+#             current_dir, *remaining = path
+#             for alt_pattern in current_dir:
+#                 dirs.setdefault(alt_pattern, []).append((remaining, entry))
+#             continue
+
+#         # base case
+#         # Found a specific item or a timepoint dir (which is a subtree)
+#         if 'sub_entries' in entry:
+#             # Recursively create nodes for a timepoint_dir's children.
+#             for alt_pattern in entry['pattern']:
+#                 node = make_tree(entry['sub_entries'])
+#                 node['tp_dir'] = True
+#                 files[alt_pattern] = node
+#         else:
+#             # Just a plain file to discover
+#             for regex in entry['pattern']:
+#                 if regex in files:
+#                     # raise exception here
+#                     # exact same path + file is defined multiple times
+#                     print(f'Duplicate file pattern given: {regex}')
+#                     continue
+#                 files[regex] = entry
+
+#     # Make sub-trees for the nested dirs
+#     final_dirs = {}
+#     for regex, entry in dirs.items():
+#         node = make_tree(entry)
+#         final_dirs[regex] = node
+
+#     return {'items': files, 'dirs': final_dirs}
+
+
+
