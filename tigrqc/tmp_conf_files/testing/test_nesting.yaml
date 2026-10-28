@@ -1,0 +1,63 @@
+# This just tests that the configuration properly parses into a tree form
+# It should match file system contents like:
+#
+# (tp_dir1 | tp_dir2) /
+#   tp_subdir1 /
+#       append_1 /
+#           qc /
+#               *.png
+#       (append_1 | append_2) /
+#           nested_append1 /
+#               (highly_nested_file.nii.gz | alt_highly_nested.json)
+#       logs /
+#           *.log
+#       directly_in_timepoint.nii.gz
+# (dataset_description.json | tmp_dcm2bids)
+
+id: nested_data
+
+description: >
+    Tests nested timepoint dirs and append paths and overriding of append
+    path / stray files all get collected. That is, a complex tree of
+    configuration files should be represented properly in tree form when
+    read.
+
+timepoint_dir:
+    - ['tp_dir1', 'tp_dir2']
+    - ['tp_subdir1']
+
+append_path:
+    - ['append_1', 'append_2']
+    - ['nested_append1']
+
+find:
+    # Nested in both timepoint_dir and append
+    - label: test1
+      patterns: ['highly_nested_file.nii.gz', 'alt_highly_nested.json']
+
+    # Diff append path
+    - label: test2
+      append_path: 'logs'
+      pattern: '.*.log'
+
+    # Attempts to override append_path. So should be present directly in
+    # timepoint_dir
+    - label: test3
+      append_path: []
+      pattern: 'directly_in_timepoint.nii.gz'
+
+    # Completely outside of timepoint_dir. Separate, top level file
+    # No append_path.
+    - label: test4
+      stray_file: True
+      append_path: []
+      patterns: ['dataset_description.json', 'tmp_dcm2bids']
+
+    # Partial overlap with main append path. Should not raise an exception
+    - label: test5
+      append_path:
+        - 'append_1'
+        - 'qc'
+      pattern: '.*.png'
+
+

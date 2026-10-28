@@ -624,6 +624,41 @@ class IgnoreFileSystemItem(FileSystemItem):
     scope: Literal['ignore'] = 'ignore'
 
 
+class TimepointDir(FileSystemItem):
+    """Stores configuration for a 'timepoint directory' to be saved in the DB.
+    """
+    label: Literal['timepoint_dir'] = 'timepoint_dir'
+    scope: Literal['timepoint'] = 'timepoint'
+    # Can't be nested within itself :P so is 'stray'
+    stray_file: bool = True
+    # Doesn't make sense to try load values
+    load_vals: None = None
+    # The raw, user-provided value.
+    timepoint_dir: list[list[TemplatedRegex]] = Field(default_factory=list)
+    # Holds items expected to be nested within this directory. Should be
+    # empty until populated during run time.
+    children: list = Field(default_factory=list)
+
+    @model_validator(mode='before')
+    @classmethod
+    def adjust_timepoint_dir(cls, data):
+        """Normalize timepoint_dir format and derive append_path/patterns
+
+        The final directory in the path becomes 'patterns', all preceding
+        dir levels become 'append_path'.
+        """
+        if isinstance(data, list) or isinstance(data, str):
+            normalized = normalize_user_path(data)
+            *pseudo_path, pseudo_patterns = normalized
+            data = {
+                'timepoint_dir': normalized,
+                'append_path': pseudo_path,
+                'patterns': pseudo_patterns,
+            }
+
+        return data
+
+
 def check_references(template: str, name_scheme: dict[str, str]) -> list[str]:
     """Check that every reference in template exists in name scheme.
 
@@ -672,7 +707,7 @@ class DatasetConfig(NameSchemeDependent):
     """
     id: str
     description: str
-    timepoint_dir: list[list[TemplatedRegex]] = Field(default_factory=list)
+    timepoint_dir: TimepointDir | None = None
     append_path: list[list[TemplatedRegex]] = Field(default_factory=list)
     find: list[FileSystemItem] = Field(min_length=1)
     ignore: list[IgnoreFileSystemItem] = Field(default_factory=list)
@@ -767,60 +802,65 @@ def make_inter_form(ds_conf: DatasetConfig) -> list[InterForm]:
     return free_items
 
 
-@dataclass
-class TreeNode:
-    """A node representing a single directory or file.
-    """
-    files: dict[TemplatedRegex, InterForm] = field(default_factory=dict)
-    subdirs: dict[TemplatedRegex, InterForm] = field(default_factory=dict)
-    # Indicates anything matching should be saved to the database as
-    # a 'timepoint_dir' / collection of files.
-    is_tp_dir: bool = False
+# @dataclass
+# class TreeNode:
+#     """A node representing a single directory or file.
+#     """
+#     # The currently matched config entry
+#     # None when at root of tree
+#     current: InterForm = None
+#     files: dict[TemplatedRegex, InterForm] = field(default_factory=dict)
+#     subdirs: dict[TemplatedRegex, InterForm] = field(default_factory=dict)
+#     # Indicates anything matching should be saved to the database as
+#     # a 'timepoint_dir' / collection of files.
+#     is_tp_dir: bool = False
 
 
-def make_tree(conf_items):
-    """parse_data.make_tree
+# def make_tree(conf_items):
+#     """parse_data.make_tree
 
-    Take parseable-format nodes and assemble them into a regex tree for
-    matching against the filesystem being parsed.
-    """
-    files = {}
-    subdirs = {}
+#     Take parseable-format nodes and assemble them into a regex tree for
+#     matching against the filesystem being parsed.
+#     """
+#     files = {}
+#     subdirs = {}
 
-    for entry in conf_items:
-        if entry.path != []:
-            # Gather every directory entry first before you recurse, to
-            # catch redundancies up front.
-            current_dir, *remaining = entry.path
-            for alt_pattern in current_dir:
-                subdirs.setdefault(alt_pattern, []).append((remaining, entry))
-            continue
+#     for entry in conf_items:
+#         if entry.path != []:
+#             # Gather every directory entry first before you recurse, to
+#             # catch redundancies up front.
+#             current_dir, *remaining = entry.path
+#             for alt_pattern in current_dir:
+#                 subdirs.setdefault(alt_pattern, []).append((remaining, entry))
+#             continue
 
-        # base case
-        # Found a specific item or a timepoint dir (which is a subtree)
-        if entry.children:
-            # Create a subtree for each accepted timepoint_dir directory name
-            for alt_pattern in entry.patterns:
-                node = make_tree(entry.children)
-                # This indicates the directory should be saved in the database.
-                node.tp_dir = True
-                files[alt_pattern] = node
-        else:
-            # Item represents a plain file
-            for regex in entry.patterns:
-                if regex in files:
-                    raise Exception(
-                        f'Duplicate file path/pattern given: {regex}'
-                    )
-                files[regex] = entry
+#         # base case
+#         # Found a specific item or a timepoint dir (which is a subtree)
+#         if entry.children:
+#             # Create a subtree for each accepted timepoint_dir directory name
+#             for alt_pattern in entry.patterns:
+#                 node = make_tree(entry.children)
+#                 # This indicates the directory should be saved in the database.
+#                 node.is_tp_dir = True
+#                 node.current = entry
+#                 files[alt_pattern] = node
+#         else:
+#             # Item represents a plain file
+#             for regex in entry.patterns:
+#                 if regex in files:
+#                     raise Exception(
+#                         f'Duplicate file path/pattern given: {regex}'
+#                     )
+#                 files[regex] = entry
 
-    # Make sub-trees for the nested dirs
-    final_dirs = {}
-    for regex, entry in subdirs.items():
-        node = make_tree(entry)
-        final_dirs[regex] = node
+#     # Make sub-trees for the nested dirs
+#     final_dirs = {}
+#     for regex, entry in subdirs.items():
+#         node = make_tree(entry)
+#         node.current = entry
+#         final_dirs[regex] = node
 
-    return TreeNode(files=files, subdirs=final_dirs)
+#     return TreeNode(files=files, subdirs=final_dirs)
 
 
 def read_source_dir(source_path, conf_tree, collected=None, strict=True):
@@ -849,7 +889,6 @@ def read_source_dir(source_path, conf_tree, collected=None, strict=True):
                 if entry['conf'].entry.load_vals:
                     # Needs implementation still
                     load_metadata(entry)
-                break
 
         if entry:
             all_vals = {**collected, **entry}
@@ -987,5 +1026,115 @@ def pydantic_load(ds_conf):
 
 #     return {'items': files, 'dirs': final_dirs}
 
+@dataclass
+class TreeNode:
+    """A node representing a regex that may match a file or directory.
+    """
+    regex: TemplatedRegex
+    # Represents the matched configuration entry
+    # When config != None and children != [] you have a timepoint_dir that
+    # must be saved in the database
+    config: FileSystemItem = None
+    # When set, indicates dirs matching its regex are a 'timepoint' directory
+    # These are 'leafy'. They must be saved to the database, but also have
+    # children (files and other subdirs) that must be explored later.
+    is_tp_dir: bool = False
+    children: list[TreeNode] = field(default_factory=list)
+
+    def __repr__(self):
+        return f"<TreeNode {self.regex.pattern}>"
 
 
+from copy import deepcopy
+
+
+def make_tree(ds_conf):
+    """Assemble the dataset file configuration into a tree form.
+
+    Entries for files and directories that must be found/ignored will be
+    assembled into a tree form so the filesystem search can efficiently be
+    compared against what's expected.
+
+    file_conf is a list of the result of 'prep_conf' or plain find/ignore
+    entries.
+    """
+
+    # ds_conf.find / .ignore provide file items to add / ignore
+    # ds_conf.timepoint_dir defines directories that group files into logical
+    #   units
+    # ds_conf.append_path defines path that must be pre-fixed to each found file
+    #   unless overridden by that specific entry.
+    files = deepcopy(ds_conf.find)
+    files.extend(deepcopy(ds_conf.ignore))
+    tp_dir = deepcopy(ds_conf.timepoint_dir)
+
+    grouped = []
+    stray = []
+    for item in files:
+        if ds_conf.append_path and not item.append_path:
+            # Apply universal path prefix given by user
+            # top level paths currently cannot be disabled
+            item.append_path = ds_conf.append_path
+
+        if not tp_dir:
+            stray.append(item)
+        elif item.scope == 'dataset' or item.stray_file == True:
+            stray.append(item)
+        else:
+            grouped.append(item)
+
+    if tp_dir:
+        tp_dir.children = grouped
+        stray.append(tp_dir)
+
+    # After gathering everything, make tree nodes.
+    top_level_items = []
+    for entry in stray:
+        top_level_items.extend(make_tree_nodes(entry))
+
+    return top_level_items
+
+
+def make_tree_nodes(conf_entry):
+    if conf_entry.append_path == []:
+        # Base case. Make a child node for each pattern
+        if conf_entry.label == 'timepoint_dir':
+            is_tp = True
+            children = []
+            for entry in conf_entry.children:
+                children.extend(make_tree_nodes(entry))
+        else:
+            is_tp = False
+            children = []
+
+        items = {}
+        for alt_pattern in conf_entry.patterns:
+            if alt_pattern in items:
+                raise Exception(f'Duplicate regex found - {alt_pattern.pattern}')
+            items[alt_pattern] = TreeNode(
+                regex=alt_pattern,
+                config=conf_entry,
+                is_tp_dir=is_tp,
+                children=children,
+            )
+
+        return list(items.values())
+
+    current_dir, *remaining = conf_entry.append_path
+    conf_entry.append_path = remaining
+
+    # Only need to collect children once, because each subtree is identical
+    children = make_tree_nodes(conf_entry)
+
+    items = {}
+    for alt_pattern in current_dir:
+        if alt_pattern in items:
+            raise Exception(f'Duplicate regex found - {alt_pattern.pattern}')
+        items[alt_pattern] = TreeNode(
+            regex=alt_pattern,
+            config=conf_entry,
+            is_tp_dir=False,
+            children=children,
+        )
+
+    return list(items.values())
